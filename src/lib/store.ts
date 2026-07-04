@@ -108,7 +108,7 @@ export interface Channel {
   config: Record<string, unknown>
 }
 
-type View = 'dashboard' | 'bots' | 'builder' | 'conversations' | 'channels' | 'teams'
+type View = 'dashboard' | 'bots' | 'builder' | 'conversations' | 'channels' | 'teams' | 'api'
 
 interface ChatbotStore {
   // Navigation

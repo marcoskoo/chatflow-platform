@@ -9,6 +9,7 @@ import { FlowBuilder } from '@/components/chatbot/FlowBuilder'
 import { ConversationPanel } from '@/components/chatbot/ConversationPanel'
 import { ChannelManager } from '@/components/chatbot/ChannelManager'
 import { TeamManager } from '@/components/chatbot/TeamManager'
+import { ApiDocs } from '@/components/chatbot/ApiDocs'
 
 export default function Home() {
   const { currentView } = useChatbotStore()
@@ -27,6 +28,8 @@ export default function Home() {
         return <ChannelManager />
       case 'teams':
         return <TeamManager />
+      case 'api':
+        return <ApiDocs />
       default:
         return <Dashboard />
     }

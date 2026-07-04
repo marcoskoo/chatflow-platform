@@ -3,7 +3,7 @@
 import React from 'react'
 import {
   MessageSquare, Bot, Settings, Users, Radio,
-  LayoutDashboard, Zap, ChevronLeft, ChevronRight,
+  LayoutDashboard, Zap, ChevronLeft, ChevronRight, Code,
 } from 'lucide-react'
 import { useChatbotStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,7 @@ const navItems = [
   { id: 'conversations' as const, label: 'Conversaciones', icon: MessageSquare },
   { id: 'channels' as const, label: 'Canales', icon: Radio },
   { id: 'teams' as const, label: 'Equipos', icon: Users },
+  { id: 'api' as const, label: 'API & IA', icon: Code },
 ]
 
 export function Sidebar() {
