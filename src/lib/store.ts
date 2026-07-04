@@ -114,6 +114,8 @@ interface ChatbotStore {
   // Navigation
   currentView: View
   setCurrentView: (view: View) => void
+  sidebarOpen: boolean
+  setSidebarOpen: (open: boolean) => void
   
   // Bots
   bots: Bot[]
@@ -289,6 +291,8 @@ const defaultBots: Bot[] = [
 export const useChatbotStore = create<ChatbotStore>((set) => ({
   currentView: 'dashboard',
   setCurrentView: (view) => set({ currentView: view }),
+  sidebarOpen: true,
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
   
   bots: defaultBots,
   selectedBotId: null,

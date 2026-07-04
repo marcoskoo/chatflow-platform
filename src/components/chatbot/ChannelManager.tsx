@@ -48,10 +48,10 @@ export function ChannelManager() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Canales de Comunicación</h1>
-        <p className="text-slate-500 mt-1">Conecta y gestiona tus canales de mensajería para automatizar conversaciones</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Canales de Comunicación</h1>
+        <p className="text-slate-500 mt-1 text-sm">Conecta y gestiona tus canales de mensajería para automatizar conversaciones</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -158,18 +158,18 @@ export function ChannelManager() {
         })}
       </div>
 
-      <div className="mt-8 p-6 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-200">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center text-white text-xl">
+      <div className="mt-8 p-4 sm:p-6 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-200">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-500 flex items-center justify-center text-white text-lg sm:text-xl">
             🚀
           </div>
-          <div>
-            <h3 className="font-bold text-lg text-slate-900">Conecta más canales</h3>
+          <div className="flex-1">
+            <h3 className="font-bold text-base sm:text-lg text-slate-900">Conecta más canales</h3>
             <p className="text-sm text-slate-600 mt-1">
               Amplía tu alcance conectando múltiples canales. Cada canal te permite automatizar conversaciones
               en una plataforma diferente, llegando a tus clientes donde sea que estén.
             </p>
-            <div className="flex gap-2 mt-3">
+            <div className="flex flex-wrap gap-2 mt-3">
               <Badge className="bg-green-100 text-green-700">WhatsApp: 2B+ usuarios</Badge>
               <Badge className="bg-blue-100 text-blue-700">Messenger: 1.3B+ usuarios</Badge>
               <Badge className="bg-pink-100 text-pink-700">Instagram: 2B+ usuarios</Badge>

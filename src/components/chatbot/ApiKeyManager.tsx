@@ -187,24 +187,24 @@ export function ApiKeyManager() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <Shield className="w-6 h-6 text-violet-500" /> Seguridad & API
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-violet-500" /> Seguridad & API
         </h1>
-        <p className="text-slate-500 mt-1">Gestiona API keys para proteger tus endpoints y configura webhooks reales con cada plataforma</p>
+        <p className="text-slate-500 mt-1 text-sm">Gestiona API keys para proteger tus endpoints y configura webhooks reales con cada plataforma</p>
       </div>
 
       <Tabs defaultValue="apikeys" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-6">
-          <TabsTrigger value="apikeys" className="gap-2">
-            <Key className="w-4 h-4" /> API Keys
+        <TabsList className="grid w-full grid-cols-3 mb-4 sm:mb-6">
+          <TabsTrigger value="apikeys" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+            <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">API Keys</span><span className="sm:hidden">Keys</span>
           </TabsTrigger>
-          <TabsTrigger value="webhooks" className="gap-2">
-            <Globe className="w-4 h-4" /> Webhooks
+          <TabsTrigger value="webhooks" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+            <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Webhooks</span><span className="sm:hidden">Hooks</span>
           </TabsTrigger>
-          <TabsTrigger value="docs" className="gap-2">
-            <ExternalLink className="w-4 h-4" /> Documentacion
+          <TabsTrigger value="docs" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+            <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Documentacion</span><span className="sm:hidden">Docs</span>
           </TabsTrigger>
         </TabsList>
 

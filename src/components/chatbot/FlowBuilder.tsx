@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useCallback } from 'react'
 import { useChatbotStore, type FlowNode, type FlowEdge } from '@/lib/store'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -10,8 +10,9 @@ import {
 import {
   Play, MessageSquare, ToggleRight, GitBranch, Send, UserPlus,
   MousePointerClick, Brain, Trash2, Settings, Save, ArrowLeft,
-  GripVertical, Plus, X, Move, ChevronDown,
+  GripVertical, Plus, X, Move, ChevronDown, PanelLeft, PanelRight, ZoomIn, ZoomOut,
 } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 const nodeTypes: { type: FlowNode['type']; label: string; icon: React.ReactNode; color: string; description: string }[] = [
   { type: 'start', label: 'Inicio', icon: <Play className="w-4 h-4" />, color: 'bg-emerald-500', description: 'Punto de entrada del flujo' },
@@ -46,6 +47,11 @@ export function FlowBuilder() {
   const [editTransferTeam, setEditTransferTeam] = useState('')
   const [editTransferMsg, setEditTransferMsg] = useState('')
   const [editAiPrompt, setEditAiPrompt] = useState('')
+  const isMobile = useIsMobile()
+  const [showMobilePalette, setShowMobilePalette] = useState(false)
+  const [canvasScale, setCanvasScale] = useState(1)
+  const lastTouchDist = useRef<number | null>(null)
+  const lastTouchCenter = useRef<{ x: number; y: number } | null>(null)
 
   const bot = bots.find(b => b.id === selectedBotId)
   const flow = bot?.flows.find(f => f.id === selectedFlowId)
@@ -57,14 +63,14 @@ export function FlowBuilder() {
     if (isPanning) {
       const dx = e.clientX - panStart.x
       const dy = e.clientY - panStart.y
-      setCanvasOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }))
+      setCanvasOffset(prev => ({ x: prev.x + dx / canvasScale, y: prev.y + dy / canvasScale }))
       setPanStart({ x: e.clientX, y: e.clientY })
       return
     }
 
     if (draggingNode && flow) {
-      const x = e.clientX - rect.left - dragOffset.x - canvasOffset.x
-      const y = e.clientY - rect.top - dragOffset.y - canvasOffset.y
+      const x = (e.clientX - rect.left - dragOffset.x) / canvasScale - canvasOffset.x
+      const y = (e.clientY - rect.top - dragOffset.y) / canvasScale - canvasOffset.y
       const newNodes = flow.nodes.map(n =>
         n.id === draggingNode ? { ...n, position: { x: Math.max(0, x), y: Math.max(0, y) } } : n
       )
@@ -72,7 +78,7 @@ export function FlowBuilder() {
     }
 
     if (connectingFrom) {
-      setMousePos({ x: e.clientX - rect.left - canvasOffset.x, y: e.clientY - rect.top - canvasOffset.y })
+      setMousePos({ x: (e.clientX - rect.left) / canvasScale - canvasOffset.x, y: (e.clientY - rect.top) / canvasScale - canvasOffset.y })
     }
   }
 
@@ -101,8 +107,8 @@ export function FlowBuilder() {
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return
 
-    const x = e.clientX - rect.left - canvasOffset.x
-    const y = e.clientY - rect.top - canvasOffset.y
+    const x = (e.clientX - rect.left) / canvasScale - canvasOffset.x
+    const y = (e.clientY - rect.top) / canvasScale - canvasOffset.y
 
     const typeInfo = nodeTypes.find(t => t.type === nodeType)
     const newNode: FlowNode = {
@@ -129,8 +135,8 @@ export function FlowBuilder() {
     if (!rect) return
     setDraggingNode(nodeId)
     setDragOffset({
-      x: e.clientX - rect.left - node.position.x - canvasOffset.x,
-      y: e.clientY - rect.top - node.position.y - canvasOffset.y,
+      x: e.clientX - rect.left - (node.position.x + canvasOffset.x) * canvasScale,
+      y: e.clientY - rect.top - (node.position.y + canvasOffset.y) * canvasScale,
     })
   }
 
@@ -195,6 +201,64 @@ export function FlowBuilder() {
       transferMessage: editTransferMsg,
       aiPrompt: editAiPrompt,
     })
+  }
+
+  // Touch support for mobile (pinch-to-zoom + pan)
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      lastTouchDist.current = Math.sqrt(dx * dx + dy * dy)
+      lastTouchCenter.current = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      }
+    } else if (e.touches.length === 1) {
+      setIsPanning(true)
+      setPanStart({ x: e.touches[0].clientX, y: e.touches[0].clientY })
+    }
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2 && lastTouchDist.current !== null) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const scaleDelta = dist / lastTouchDist.current
+      setCanvasScale(prev => Math.min(3, Math.max(0.3, prev * scaleDelta)))
+      lastTouchDist.current = dist
+    } else if (e.touches.length === 1 && isPanning) {
+      const dx = e.touches[0].clientX - panStart.x
+      const dy = e.touches[0].clientY - panStart.y
+      setCanvasOffset(prev => ({ x: prev.x + dx / canvasScale, y: prev.y + dy / canvasScale }))
+      setPanStart({ x: e.touches[0].clientX, y: e.touches[0].clientY })
+    }
+  }, [isPanning, panStart, canvasScale])
+
+  const handleTouchEnd = useCallback(() => {
+    lastTouchDist.current = null
+    lastTouchCenter.current = null
+    setIsPanning(false)
+  }, [])
+
+  // Handle adding node on mobile from palette
+  const handleMobileAddNode = (nodeType: FlowNode['type']) => {
+    const typeInfo = nodeTypes.find(t => t.type === nodeType)
+    const newNode: FlowNode = {
+      id: uuidv4(),
+      type: nodeType,
+      position: { x: -canvasOffset.x + 100, y: -canvasOffset.y + 100 },
+      data: {
+        label: typeInfo?.label || 'Nodo',
+        content: nodeType === 'message' ? 'Escribe tu mensaje aquí...' : undefined,
+        buttons: nodeType === 'buttons' ? [{ id: uuidv4(), text: 'Opción 1' }, { id: uuidv4(), text: 'Opción 2' }] : undefined,
+        transferTeam: nodeType === 'transfer' ? teams[0]?.id : undefined,
+        transferMessage: nodeType === 'transfer' ? 'Te estoy transfiriendo con un agente...' : undefined,
+        aiPrompt: nodeType === 'ai_response' ? 'Ayuda al usuario con su consulta.' : undefined,
+      },
+    }
+    addFlowNode(flow.id, newNode)
+    setShowMobilePalette(false)
   }
 
   const getNodeColor = (type: FlowNode['type']) => {
@@ -368,59 +432,136 @@ export function FlowBuilder() {
 
   return (
     <div className="flex h-screen">
-      {/* Sidebar - Node Palette */}
-      <div className="w-56 bg-white border-r border-slate-200 flex flex-col">
-        <div className="p-3 border-b border-slate-200">
-          <Button variant="ghost" size="sm" className="gap-1 text-slate-600 mb-2" onClick={() => setCurrentView('bots')}>
-            <ArrowLeft className="w-4 h-4" /> Volver
-          </Button>
-          <h2 className="font-bold text-sm text-slate-900">{flow.name}</h2>
-          <p className="text-xs text-slate-500">{bot.name}</p>
-        </div>
-        <div className="p-3 border-b border-slate-200">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Componentes</h3>
-          <p className="text-[10px] text-slate-400 mb-2">Arrastra al canvas para agregar</p>
-        </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {nodeTypes.map((nt) => (
-            <div
-              key={nt.type}
-              draggable
-              onDragStart={(e) => e.dataTransfer.setData('nodeType', nt.type)}
-              className="flex items-center gap-2 p-2 rounded-lg cursor-grab hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all active:cursor-grabbing"
-            >
-              <div className={`w-8 h-8 rounded-lg ${nt.color} text-white flex items-center justify-center flex-shrink-0`}>
-                {nt.icon}
+      {/* Desktop Sidebar - Node Palette */}
+      {!isMobile && (
+        <div className="w-56 bg-white border-r border-slate-200 flex flex-col">
+          <div className="p-3 border-b border-slate-200">
+            <Button variant="ghost" size="sm" className="gap-1 text-slate-600 mb-2" onClick={() => setCurrentView('bots')}>
+              <ArrowLeft className="w-4 h-4" /> Volver
+            </Button>
+            <h2 className="font-bold text-sm text-slate-900">{flow.name}</h2>
+            <p className="text-xs text-slate-500">{bot.name}</p>
+          </div>
+          <div className="p-3 border-b border-slate-200">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Componentes</h3>
+            <p className="text-[10px] text-slate-400 mb-2">Arrastra al canvas para agregar</p>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {nodeTypes.map((nt) => (
+              <div
+                key={nt.type}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData('nodeType', nt.type)}
+                className="flex items-center gap-2 p-2 rounded-lg cursor-grab hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all active:cursor-grabbing"
+              >
+                <div className={`w-8 h-8 rounded-lg ${nt.color} text-white flex items-center justify-center flex-shrink-0`}>
+                  {nt.icon}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-900">{nt.label}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{nt.description}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-900">{nt.label}</p>
-                <p className="text-[10px] text-slate-400 truncate">{nt.description}</p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Palette Bottom Sheet */}
+      {isMobile && showMobilePalette && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowMobilePalette(false)} />
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[60vh] flex flex-col">
+            <div className="p-3 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Agregar Componente</h3>
+              <button onClick={() => setShowMobilePalette(false)} className="p-1 rounded-lg hover:bg-slate-100"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="overflow-x-auto p-3">
+              <div className="flex gap-3 pb-2">
+                {nodeTypes.map((nt) => (
+                  <button
+                    key={nt.type}
+                    onClick={() => handleMobileAddNode(nt.type)}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl hover:bg-slate-50 border border-slate-200 min-w-[80px] transition-colors"
+                  >
+                    <div className={`w-10 h-10 rounded-lg ${nt.color} text-white flex items-center justify-center`}>
+                      {nt.icon}
+                    </div>
+                    <span className="text-[10px] font-medium text-slate-700 text-center leading-tight">{nt.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
-          ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Canvas */}
       <div className="flex-1 flex flex-col bg-slate-50">
-        <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-              <Play className="w-3 h-3 mr-1" />
-              {flow.nodes.length} nodos
-            </Badge>
-            <Badge variant="outline" className="text-slate-600">
-              <GitBranch className="w-3 h-3 mr-1" />
-              {flow.edges.length} conexiones
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Clic en ● para conectar nodos | Doble-clic para editar</span>
-            <Button size="sm" variant="outline" className="gap-1" onClick={() => { setCanvasOffset({ x: 0, y: 0 }) }}>
-              Centrar
+        {/* Mobile Toolbar */}
+        {isMobile && (
+          <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-3 gap-2">
+            <Button variant="ghost" size="sm" className="gap-1 text-slate-600" onClick={() => setCurrentView('bots')}>
+              <ArrowLeft className="w-4 h-4" />
             </Button>
+            <div className="flex items-center gap-1 min-w-0">
+              <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-[10px]">
+                {flow.nodes.length} nodos
+              </Badge>
+              <Badge variant="outline" className="text-slate-600 text-[10px]">
+                {flow.edges.length} conex
+              </Badge>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setCanvasScale(s => Math.min(3, s + 0.2))} title="Zoom in">
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setCanvasScale(s => Math.max(0.3, s - 0.2))} title="Zoom out">
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => { setCanvasScale(1); setCanvasOffset({ x: 0, y: 0 }) }} title="Reset">
+                <Move className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setShowMobilePalette(true)} title="Palette">
+                <PanelLeft className="w-4 h-4" />
+              </Button>
+              {showNodeEditor && selectedNode && (
+                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setShowNodeEditor(true)} title="Editor">
+                  <PanelRight className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Desktop Canvas Header */}
+        {!isMobile && (
+          <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                <Play className="w-3 h-3 mr-1" />
+                {flow.nodes.length} nodos
+              </Badge>
+              <Badge variant="outline" className="text-slate-600">
+                <GitBranch className="w-3 h-3 mr-1" />
+                {flow.edges.length} conexiones
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Clic en ● para conectar nodos | Doble-clic para editar</span>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setCanvasScale(s => Math.min(3, s + 0.2))} title="Zoom in">
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+              <span className="text-xs text-slate-400">{Math.round(canvasScale * 100)}%</span>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setCanvasScale(s => Math.max(0.3, s - 0.2))} title="Zoom out">
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1" onClick={() => { setCanvasOffset({ x: 0, y: 0 }); setCanvasScale(1) }}>
+                Centrar
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div
           ref={canvasRef}
@@ -437,31 +578,34 @@ export function FlowBuilder() {
               setShowNodeEditor(false)
             }
           }}
-          style={{ cursor: isPanning ? 'grabbing' : connectingFrom ? 'crosshair' : 'default' }}
+          onTouchStart={isMobile ? handleTouchStart : undefined}
+          onTouchMove={isMobile ? handleTouchMove : undefined}
+          onTouchEnd={isMobile ? handleTouchEnd : undefined}
+          style={{ cursor: isPanning ? 'grabbing' : connectingFrom ? 'crosshair' : 'default', touchAction: isMobile ? 'none' : 'auto' }}
         >
           {/* Grid background */}
           <div
             className="absolute inset-0"
             style={{
               backgroundImage: 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)',
-              backgroundSize: '20px 20px',
-              transform: `translate(${canvasOffset.x % 20}px, ${canvasOffset.y % 20}px)`,
+              backgroundSize: `${20 * canvasScale}px ${20 * canvasScale}px`,
+              transform: `translate(${canvasOffset.x * canvasScale}px, ${canvasOffset.y * canvasScale}px)`,
             }}
           />
 
-          <svg className="absolute inset-0 w-full h-full" style={{ transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px)` }}>
+          <svg className="absolute inset-0 w-full h-full" style={{ transform: `translate(${canvasOffset.x * canvasScale}px, ${canvasOffset.y * canvasScale}px) scale(${canvasScale})`, transformOrigin: '0 0' }}>
             {flow.edges.map(renderEdge)}
             {renderConnectingLine()}
           </svg>
 
-          <div style={{ transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px)` }}>
+          <div style={{ transform: `translate(${canvasOffset.x * canvasScale}px, ${canvasOffset.y * canvasScale}px) scale(${canvasScale})`, transformOrigin: '0 0' }}>
             {flow.nodes.map(renderNode)}
           </div>
         </div>
       </div>
 
-      {/* Node Editor Panel */}
-      {showNodeEditor && selectedNode && (
+      {/* Desktop Node Editor Panel */}
+      {!isMobile && showNodeEditor && selectedNode && (
         <div className="w-72 bg-white border-l border-slate-200 flex flex-col">
           <div className="p-3 border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -674,6 +818,220 @@ export function FlowBuilder() {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Mobile Node Editor Dialog */}
+      {isMobile && showNodeEditor && selectedNode && (
+        <Dialog open={showNodeEditor} onOpenChange={setShowNodeEditor}>
+          <DialogContent className="max-w-[95vw] max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <div className={`w-7 h-7 rounded-lg ${getNodeColor(selectedNode.type)} text-white flex items-center justify-center`}>
+                  {getNodeIcon(selectedNode.type)}
+                </div>
+                {selectedNode.data.label}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div>
+                <label className="text-xs font-medium text-slate-700 mb-1 block">Etiqueta del nodo</label>
+                <Input
+                  value={selectedNode.data.label}
+                  onChange={(e) => updateFlowNode(flow.id, selectedNode.id, { label: e.target.value })}
+                  className="text-sm"
+                />
+              </div>
+
+              {(selectedNode.type === 'message' || selectedNode.type === 'start') && (
+                <div>
+                  <label className="text-xs font-medium text-slate-700 mb-1 block">Contenido del mensaje</label>
+                  <Textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    onBlur={handleSaveNodeEdit}
+                    rows={4}
+                    className="text-sm"
+                    placeholder="Escribe el mensaje que se enviará..."
+                  />
+                </div>
+              )}
+
+              {selectedNode.type === 'buttons' && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-slate-700 mb-1 block">Mensaje arriba de botones</label>
+                    <Textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      onBlur={handleSaveNodeEdit}
+                      rows={2}
+                      className="text-sm"
+                      placeholder="Texto descriptivo..."
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-medium text-slate-700">Botones clicables</label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-xs gap-1"
+                        onClick={() => {
+                          const newBtns = [...editButtons, { id: uuidv4(), text: `Opción ${editButtons.length + 1}` }]
+                          setEditButtons(newBtns)
+                          updateFlowNode(flow.id, selectedNode.id, { buttons: newBtns })
+                        }}
+                      >
+                        <Plus className="w-3 h-3" /> Agregar
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      {editButtons.map((btn, idx) => (
+                        <div key={btn.id} className="flex items-center gap-1">
+                          <Input
+                            value={btn.text}
+                            onChange={(e) => {
+                              const newBtns = editButtons.map((b, i) => i === idx ? { ...b, text: e.target.value } : b)
+                              setEditButtons(newBtns)
+                              updateFlowNode(flow.id, selectedNode.id, { buttons: newBtns })
+                            }}
+                            className="text-xs h-8"
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-slate-400 hover:text-red-500"
+                            onClick={() => {
+                              const newBtns = editButtons.filter((_, i) => i !== idx)
+                              setEditButtons(newBtns)
+                              updateFlowNode(flow.id, selectedNode.id, { buttons: newBtns })
+                            }}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {selectedNode.type === 'condition' && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs font-medium text-slate-700 mb-1 block">Campo</label>
+                    <Input className="text-sm h-8" placeholder="Ej: ciudad" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-700 mb-1 block">Operador</label>
+                    <Select>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="eq">Igual a</SelectItem>
+                        <SelectItem value="neq">Diferente de</SelectItem>
+                        <SelectItem value="contains">Contiene</SelectItem>
+                        <SelectItem value="gt">Mayor que</SelectItem>
+                        <SelectItem value="lt">Menor que</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-700 mb-1 block">Valor</label>
+                    <Input className="text-sm h-8" placeholder="Valor de comparación" />
+                  </div>
+                </div>
+              )}
+
+              {selectedNode.type === 'transfer' && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs font-medium text-slate-700 mb-1 block">Transferir a equipo</label>
+                    <Select value={editTransferTeam} onValueChange={(v) => { setEditTransferTeam(v); updateFlowNode(flow.id, selectedNode.id, { transferTeam: v }) }}>
+                      <SelectTrigger className="text-sm"><SelectValue placeholder="Seleccionar equipo" /></SelectTrigger>
+                      <SelectContent>
+                        {teams.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-700 mb-1 block">Mensaje de transferencia</label>
+                    <Textarea
+                      value={editTransferMsg}
+                      onChange={(e) => setEditTransferMsg(e.target.value)}
+                      onBlur={handleSaveNodeEdit}
+                      rows={3}
+                      className="text-sm"
+                      placeholder="Mensaje antes de transferir..."
+                    />
+                  </div>
+                  {editTransferTeam && (
+                    <div className="p-2 bg-rose-50 rounded-lg">
+                      <p className="text-xs font-medium text-rose-700">
+                        Se transferirá a: {teams.find(t => t.id === editTransferTeam)?.name}
+                      </p>
+                      <p className="text-[10px] text-rose-500 mt-1">
+                        Miembros: {teams.find(t => t.id === editTransferTeam)?.members.join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedNode.type === 'ai_response' && (
+                <div>
+                  <label className="text-xs font-medium text-slate-700 mb-1 block">Prompt para IA</label>
+                  <Textarea
+                    value={editAiPrompt}
+                    onChange={(e) => setEditAiPrompt(e.target.value)}
+                    onBlur={handleSaveNodeEdit}
+                    rows={4}
+                    className="text-sm"
+                    placeholder="Instrucciones para la respuesta de IA..."
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">La IA generará una respuesta basada en este prompt y el contexto de la conversación.</p>
+                </div>
+              )}
+
+              {selectedNode.type === 'input' && (
+                <div>
+                  <label className="text-xs font-medium text-slate-700 mb-1 block">Nombre de variable</label>
+                  <Input className="text-sm h-8" placeholder="Ej: email_usuario" />
+                  <p className="text-[10px] text-slate-400 mt-1">La respuesta del usuario se guardará en esta variable.</p>
+                </div>
+              )}
+
+              {selectedNode.type === 'action' && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs font-medium text-slate-700 mb-1 block">Tipo de acción</label>
+                    <Select>
+                      <SelectTrigger className="text-sm"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="send_email">Enviar email</SelectItem>
+                        <SelectItem value="webhook">Webhook</SelectItem>
+                        <SelectItem value="set_variable">Establecer variable</SelectItem>
+                        <SelectItem value="api_call">Llamada API</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="w-full gap-1"
+                  onClick={() => { handleDeleteNode(selectedNode.id); setShowNodeEditor(false) }}
+                >
+                  <Trash2 className="w-4 h-4" /> Eliminar Nodo
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )

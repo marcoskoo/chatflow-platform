@@ -66,11 +66,11 @@ export function BotList() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Mis Chatbots</h1>
-          <p className="text-slate-500 mt-1">Gestiona y crea tus chatbots con IA</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Mis Chatbots</h1>
+          <p className="text-slate-500 mt-1 text-sm">Gestiona y crea tus chatbots con IA</p>
         </div>
         <Dialog open={showNewBot} onOpenChange={setShowNewBot}>
           <DialogTrigger asChild>

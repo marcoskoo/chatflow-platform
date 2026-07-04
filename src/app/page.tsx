@@ -11,9 +11,12 @@ import { ChannelManager } from '@/components/chatbot/ChannelManager'
 import { TeamManager } from '@/components/chatbot/TeamManager'
 import { ApiDocs } from '@/components/chatbot/ApiDocs'
 import { ApiKeyManager } from '@/components/chatbot/ApiKeyManager'
+import { Menu } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 export default function Home() {
-  const { currentView } = useChatbotStore()
+  const { currentView, setSidebarOpen } = useChatbotStore()
+  const isMobile = useIsMobile()
 
   const renderView = () => {
     switch (currentView) {
@@ -38,25 +41,33 @@ export default function Home() {
     }
   }
 
-  const isFullWidth = currentView === 'builder' || currentView === 'conversations'
-
-  if (isFullWidth) {
-    return (
-      <div className="flex h-screen bg-white">
-        <Sidebar />
-        <div className="flex-1 overflow-hidden">
-          {renderView()}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex h-screen bg-slate-50">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        {renderView()}
-      </main>
+
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Mobile Header */}
+        {isMobile && (
+          <header className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 flex-shrink-0">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 -ml-2 rounded-lg hover:bg-slate-100 text-slate-600"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center">
+                <span className="text-white text-xs font-bold">CF</span>
+              </div>
+              <span className="font-bold text-sm text-slate-900">ChatFlow</span>
+            </div>
+          </header>
+        )}
+
+        <main className="flex-1 overflow-hidden">
+          {renderView()}
+        </main>
+      </div>
     </div>
   )
 }

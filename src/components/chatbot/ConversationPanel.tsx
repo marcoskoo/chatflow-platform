@@ -5,9 +5,11 @@ import { useChatbotStore, type Message } from '@/lib/store'
 import { Button, Input, Badge, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/chatbot/ui'
 import {
   Tag as TagIcon, StickyNote, UserPlus, Send, Bot, User, HeadphonesIcon,
-  Plus, X, Sparkles, Brain, Zap, Code, Copy, Check,
+  Plus, X, Sparkles, Brain, Zap, Code, Copy, Check, ArrowLeft,
 } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
+
+import { useIsMobile } from '@/hooks/use-mobile'
 
 const tagColors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 
@@ -32,6 +34,9 @@ export function ConversationPanel() {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
+
+  const isMobile = useIsMobile()
+  const [showConvList, setShowConvList] = useState(true)
 
   const selectedConv = conversations.find(c => c.id === selectedConversationId)
 
@@ -161,10 +166,26 @@ export function ConversationPanel() {
   const channelLabel = (ch: string) => ch === 'whatsapp' ? 'WhatsApp' : ch === 'messenger' ? 'Messenger' : ch === 'instagram' ? 'Instagram' : 'Telegram'
   const formatTime = (dateStr: string) => new Date(dateStr).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
 
+  // On mobile: when selecting a conversation, show chat; when deselecting, show list
+  React.useEffect(() => {
+    if (isMobile && selectedConversationId) setShowConvList(false)
+    if (isMobile && !selectedConversationId) setShowConvList(true)
+  }, [isMobile, selectedConversationId])
+
+  const handleSelectConv = (id: string) => {
+    selectConversation(id)
+    if (isMobile) setShowConvList(false)
+  }
+
+  const handleBackToList = () => {
+    selectConversation('' as any)
+    setShowConvList(true)
+  }
+
   return (
-    <div className="flex h-screen">
-      {/* Conversation List */}
-      <div className="w-80 border-r border-slate-200 flex flex-col bg-white">
+    <div className="flex h-full">
+      {/* Conversation List - hidden on mobile when chat is open */}
+      <div className={`${isMobile && !showConvList ? 'hidden' : 'flex'} ${isMobile ? 'w-full' : 'w-80'} border-r border-slate-200 flex-col bg-white flex-shrink-0`}>
         <div className="p-3 border-b border-slate-200 space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-base text-slate-900">Conversaciones</h2>
@@ -193,7 +214,7 @@ export function ConversationPanel() {
             const isActive = selectedConversationId === conv.id
             const statusDot = conv.status === 'active' ? 'bg-emerald-400' : conv.status === 'pending' ? 'bg-amber-400' : 'bg-slate-300'
             return (
-              <div key={conv.id} onClick={() => selectConversation(conv.id)} className={`p-3 cursor-pointer border-b border-slate-100 transition-colors ${isActive ? 'bg-emerald-50 border-l-2 border-l-emerald-500' : 'hover:bg-slate-50'}`}>
+              <div key={conv.id} onClick={() => handleSelectConv(conv.id)} className={`p-3 cursor-pointer border-b border-slate-100 transition-colors ${isActive ? 'bg-emerald-50 border-l-2 border-l-emerald-500' : 'hover:bg-slate-50'}`}>
                 <div className="flex items-start gap-3">
                   <div className="relative">
                     <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
@@ -226,12 +247,17 @@ export function ConversationPanel() {
         </div>
       </div>
 
-      {/* Chat Area */}
+      {/* Chat Area - full screen on mobile, flex on desktop */}
       {selectedConv ? (
-        <div className="flex-1 flex flex-col">
-          {/* Chat Header */}
-          <div className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4">
-            <div className="flex items-center gap-3">
+        <div className={`${isMobile && showConvList ? 'hidden' : 'flex'} flex-col min-w-0 ${isMobile ? 'flex-1' : ''}`}>
+          {/* Mobile Back Button */}
+          <div className="h-14 border-b border-slate-200 bg-white flex items-center px-3 gap-2 flex-shrink-0">
+            {isMobile && (
+              <button onClick={handleBackToList} className="p-1.5 -ml-1 rounded-lg hover:bg-slate-100 text-slate-600 flex-shrink-0">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
                 {selectedConv.contactName.split(' ').map(n => n[0]).join('')}
               </div>
@@ -249,9 +275,9 @@ export function ConversationPanel() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-shrink-0">
               <Dialog open={showTagDialog} onOpenChange={setShowTagDialog}>
-                <DialogTrigger asChild><Button variant="ghost" size="sm" className="gap-1 text-slate-600"><TagIcon className="w-4 h-4" /> Etiqueta</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="ghost" size="sm" className="gap-1 text-slate-600"><TagIcon className="w-4 h-4" />{!isMobile && <span>Etiqueta</span>}</Button></DialogTrigger>
                 <DialogContent>
                   <DialogHeader><DialogTitle>Agregar Etiqueta</DialogTitle></DialogHeader>
                   <div className="space-y-4 pt-4">
@@ -263,7 +289,7 @@ export function ConversationPanel() {
                 </DialogContent>
               </Dialog>
               <Dialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
-                <DialogTrigger asChild><Button variant="ghost" size="sm" className="gap-1 text-slate-600"><StickyNote className="w-4 h-4" /> Nota{selectedConv.notes.length > 0 && <span className="bg-amber-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{selectedConv.notes.length}</span>}</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="ghost" size="sm" className="gap-1 text-slate-600"><StickyNote className="w-4 h-4" />{!isMobile && <span>Nota</span>}{selectedConv.notes.length > 0 && <span className="bg-amber-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{selectedConv.notes.length}</span>}</Button></DialogTrigger>
                 <DialogContent>
                   <DialogHeader><DialogTitle>Notas de Conversación</DialogTitle></DialogHeader>
                   <div className="space-y-4 pt-4">
@@ -274,7 +300,7 @@ export function ConversationPanel() {
                 </DialogContent>
               </Dialog>
               <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
-                <DialogTrigger asChild><Button variant="ghost" size="sm" className="gap-1 text-rose-600 hover:text-rose-700"><UserPlus className="w-4 h-4" /> Transferir</Button></DialogTrigger>
+                <DialogTrigger asChild><Button variant="ghost" size="sm" className="gap-1 text-rose-600 hover:text-rose-700"><UserPlus className="w-4 h-4" />{!isMobile && <span>Transferir</span>}</Button></DialogTrigger>
                 <DialogContent>
                   <DialogHeader><DialogTitle>Transferir Conversación</DialogTitle></DialogHeader>
                   <div className="space-y-4 pt-4">
@@ -288,13 +314,13 @@ export function ConversationPanel() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+          <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-3 bg-slate-50">
             {selectedConv.messages.map((msg) => {
               const isUser = msg.sender === 'user'
               const isBot = msg.isBot
               return (
                 <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] ${isUser ? 'order-2' : 'order-1'}`}>
+                  <div className={`max-w-[85%] sm:max-w-[75%] ${isUser ? 'order-2' : 'order-1'}`}>
                     <div className="flex items-center gap-1.5 mb-1">
                       {!isUser && <span className="flex items-center gap-1">{isBot ? <><Brain className="w-3 h-3 text-violet-500" /><span className="text-[10px] text-violet-500 font-medium">GLM</span></> : <><HeadphonesIcon className="w-3 h-3 text-blue-500" /><span className="text-[10px] text-blue-500 font-medium">Agente</span></>}</span>}
                       <span className="text-[10px] text-slate-400">{formatTime(msg.createdAt)}</span>
@@ -341,21 +367,21 @@ export function ConversationPanel() {
           )}
 
           {/* Message Input */}
-          <div className="p-3 border-t border-slate-200 bg-white">
-            <div className="flex items-end gap-2">
+          <div className="p-2 sm:p-3 border-t border-slate-200 bg-white">
+            <div className="flex items-end gap-1 sm:gap-2">
               <div className="flex-1">
-                <Textarea value={messageInput} onChange={(e) => setMessageInput(e.target.value)} placeholder="Escribe un mensaje..." rows={1} className="resize-none text-sm min-h-[40px]"
+                <Textarea value={messageInput} onChange={(e) => setMessageInput(e.target.value)} placeholder="Escribe un mensaje..." rows={1} className="resize-none text-sm min-h-[36px] sm:min-h-[40px]"
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage() } }}
                 />
               </div>
-              <Button onClick={handleAiSuggestions} disabled={aiLoading} variant="outline" className="h-10 w-10 p-0 border-violet-200 text-violet-600 hover:bg-violet-50" title="Sugerencias IA GLM">
-                <Sparkles className="w-4 h-4" />
+              <Button onClick={handleAiSuggestions} disabled={aiLoading} variant="outline" className="h-8 w-8 sm:h-10 sm:w-10 p-0 border-violet-200 text-violet-600 hover:bg-violet-50" title="Sugerencias IA GLM">
+                <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </Button>
-              <Button onClick={handleAiResponse} disabled={aiLoading} variant="outline" className="h-10 w-10 p-0 border-violet-200 text-violet-600 hover:bg-violet-50" title="Respuesta IA GLM">
-                {aiLoading ? <div className="w-4 h-4 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" /> : <Brain className="w-4 h-4" />}
+              <Button onClick={handleAiResponse} disabled={aiLoading} variant="outline" className="h-8 w-8 sm:h-10 sm:w-10 p-0 border-violet-200 text-violet-600 hover:bg-violet-50" title="Respuesta IA GLM">
+                {aiLoading ? <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" /> : <Brain className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
               </Button>
-              <Button onClick={handleSendMessage} disabled={!messageInput.trim()} className="bg-emerald-600 hover:bg-emerald-700 h-10 w-10 p-0">
-                <Send className="w-4 h-4" />
+              <Button onClick={handleSendMessage} disabled={!messageInput.trim()} className="bg-emerald-600 hover:bg-emerald-700 h-8 w-8 sm:h-10 sm:w-10 p-0">
+                <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </Button>
             </div>
           </div>

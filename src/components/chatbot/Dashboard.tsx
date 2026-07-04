@@ -35,13 +35,13 @@ export function Dashboard() {
   const recentConversations = conversations.slice(0, 5)
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 mt-1">Resumen de tu plataforma de chatbots con IA</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 mt-1 text-sm">Resumen de tu plataforma de chatbots con IA</p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-slate-500">
+        <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
           <Clock className="w-4 h-4" />
           {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </div>
@@ -87,9 +87,9 @@ export function Dashboard() {
           <CardContent>
             <div className="space-y-3">
               {channelStats.map((ch) => (
-                <div key={ch.name} className="flex items-center gap-3">
-                  <span className="text-lg w-8">{ch.icon}</span>
-                  <span className="text-sm font-medium text-slate-700 w-24">{ch.name}</span>
+                <div key={ch.name} className="flex items-center gap-2 sm:gap-3">
+                  <span className="text-lg w-6 sm:w-8">{ch.icon}</span>
+                  <span className="text-xs sm:text-sm font-medium text-slate-700 w-20 sm:w-24">{ch.name}</span>
                   <div className="flex-1 h-8 bg-slate-100 rounded-lg overflow-hidden">
                     <div
                       className={`h-full ${ch.color} rounded-lg flex items-center px-3 transition-all`}

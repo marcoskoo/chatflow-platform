@@ -195,12 +195,12 @@ const transferToTeam = async (convId, team, agent) => {
 };`
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <Code className="w-6 h-6 text-violet-500" /> API & Integraciones
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <Code className="w-5 h-5 sm:w-6 sm:h-6 text-violet-500" /> API & Integraciones
         </h1>
-        <p className="text-slate-500 mt-1">API REST completa con IA GLM integrada para usar ChatFlow desde cualquier aplicación</p>
+        <p className="text-slate-500 mt-1 text-sm">API REST completa con IA GLM integrada para usar ChatFlow desde cualquier aplicación</p>
       </div>
 
       {/* AI GLM Feature Card */}
@@ -227,7 +227,7 @@ const transferToTeam = async (convId, team, agent) => {
       </Card>
 
       {/* Code Examples */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 gap-4 mb-6">
         <Card className="border-slate-200">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -290,8 +290,8 @@ const transferToTeam = async (convId, team, agent) => {
                         <Badge className={`text-[10px] font-mono px-1.5 py-0 ${methodColors[ep.method]}`}>
                           {ep.method}
                         </Badge>
-                        <code className="text-xs text-slate-700 font-mono flex-1">{ep.path}</code>
-                        <span className="text-xs text-slate-500">{ep.description}</span>
+                        <code className="text-xs text-slate-700 font-mono flex-1 min-w-0 truncate">{ep.path}</code>
+                        <span className="text-xs text-slate-500 hidden md:inline">{ep.description}</span>
                         <ArrowRight className={`w-3 h-3 text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                       </button>
                       {isExpanded && (ep.body || ep.response) && (
