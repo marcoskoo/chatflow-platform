@@ -1,20 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth'
 
 // GET /api/conversations/[convId]/notes - List notes
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ convId: string }> }
 ) {
+  const auth = await requireAuth(request, 'read')
+  if (!auth.success) return auth.response
+
   try {
-    const { convId } = await params;
+    const { convId } = await params
     const notes = await db.note.findMany({
       where: { conversationId: convId },
-      orderBy: { createdAt: "desc" },
-    });
-    return NextResponse.json({ success: true, data: notes });
+      orderBy: { createdAt: 'desc' },
+    })
+    return NextResponse.json({ success: true, data: notes })
   } catch (error) {
-    return NextResponse.json({ success: false, error: "Failed to fetch notes" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch notes' },
+      { status: 500 }
+    )
   }
 }
 
@@ -23,25 +30,34 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ convId: string }> }
 ) {
+  const auth = await requireAuth(request, 'write')
+  if (!auth.success) return auth.response
+
   try {
-    const { convId } = await params;
-    const body = await request.json();
-    const { content, author } = body;
+    const { convId } = await params
+    const body = await request.json()
+    const { content, author } = body
 
     if (!content) {
-      return NextResponse.json({ success: false, error: "Note content is required" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Note content is required' },
+        { status: 400 }
+      )
     }
 
     const note = await db.note.create({
       data: {
         content,
-        author: author || "API",
+        author: author || 'API',
         conversationId: convId,
       },
-    });
+    })
 
-    return NextResponse.json({ success: true, data: note }, { status: 201 });
+    return NextResponse.json({ success: true, data: note }, { status: 201 })
   } catch (error) {
-    return NextResponse.json({ success: false, error: "Failed to add note" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to add note' },
+      { status: 500 }
+    )
   }
 }

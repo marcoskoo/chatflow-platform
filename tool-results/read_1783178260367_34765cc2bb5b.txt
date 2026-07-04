@@ -1,0 +1,681 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useRef } from 'react'
+     4→import { useChatbotStore, type FlowNode, type FlowEdge } from '@/lib/store'
+     5→import { v4 as uuidv4 } from 'uuid'
+     6→import {
+     7→  Button, Input, Textarea, Badge, Dialog, DialogContent, DialogHeader, DialogTitle,
+     8→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+     9→} from '@/components/chatbot/ui'
+    10→import {
+    11→  Play, MessageSquare, ToggleRight, GitBranch, Send, UserPlus,
+    12→  MousePointerClick, Brain, Trash2, Settings, Save, ArrowLeft,
+    13→  GripVertical, Plus, X, Move, ChevronDown,
+    14→} from 'lucide-react'
+    15→
+    16→const nodeTypes: { type: FlowNode['type']; label: string; icon: React.ReactNode; color: string; description: string }[] = [
+    17→  { type: 'start', label: 'Inicio', icon: <Play className="w-4 h-4" />, color: 'bg-emerald-500', description: 'Punto de entrada del flujo' },
+    18→  { type: 'message', label: 'Mensaje', icon: <MessageSquare className="w-4 h-4" />, color: 'bg-blue-500', description: 'Enviar un mensaje de texto' },
+    19→  { type: 'buttons', label: 'Botones', icon: <ToggleRight className="w-4 h-4" />, color: 'bg-purple-500', description: 'Mensaje con botones clicables' },
+    20→  { type: 'condition', label: 'Condición', icon: <GitBranch className="w-4 h-4" />, color: 'bg-amber-500', description: 'Bifurcar según condición' },
+    21→  { type: 'action', label: 'Acción', icon: <Send className="w-4 h-4" />, color: 'bg-cyan-500', description: 'Ejecutar una acción' },
+    22→  { type: 'transfer', label: 'Transferir', icon: <UserPlus className="w-4 h-4" />, color: 'bg-rose-500', description: 'Transferir a operador/equipo' },
+    23→  { type: 'input', label: 'Entrada', icon: <MousePointerClick className="w-4 h-4" />, color: 'bg-teal-500', description: 'Esperar entrada del usuario' },
+    24→  { type: 'ai_response', label: 'Respuesta IA', icon: <Brain className="w-4 h-4" />, color: 'bg-violet-500', description: 'Respuesta generada por IA' },
+    25→]
+    26→
+    27→export function FlowBuilder() {
+    28→  const {
+    29→    bots, selectedBotId, selectedFlowId, updateFlowNodes, updateFlowEdges,
+    30→    addFlowNode, updateFlowNode, deleteFlowNode, setCurrentView, teams,
+    31→  } = useChatbotStore()
+    32→
+    33→  const canvasRef = useRef<HTMLDivElement>(null)
+    34→  const [draggingNode, setDraggingNode] = useState<string | null>(null)
+    35→  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+    36→  const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
+    37→  const [connectingHandle, setConnectingHandle] = useState<string | null>(null)
+    38→  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+    39→  const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+    40→  const [showNodeEditor, setShowNodeEditor] = useState(false)
+    41→  const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 })
+    42→  const [isPanning, setIsPanning] = useState(false)
+    43→  const [panStart, setPanStart] = useState({ x: 0, y: 0 })
+    44→  const [editButtons, setEditButtons] = useState<{ id: string; text: string }[]>([])
+    45→  const [editContent, setEditContent] = useState('')
+    46→  const [editTransferTeam, setEditTransferTeam] = useState('')
+    47→  const [editTransferMsg, setEditTransferMsg] = useState('')
+    48→  const [editAiPrompt, setEditAiPrompt] = useState('')
+    49→
+    50→  const bot = bots.find(b => b.id === selectedBotId)
+    51→  const flow = bot?.flows.find(f => f.id === selectedFlowId)
+    52→
+    53→  const handleMouseMove = (e: React.MouseEvent) => {
+    54→    const rect = canvasRef.current?.getBoundingClientRect()
+    55→    if (!rect) return
+    56→
+    57→    if (isPanning) {
+    58→      const dx = e.clientX - panStart.x
+    59→      const dy = e.clientY - panStart.y
+    60→      setCanvasOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }))
+    61→      setPanStart({ x: e.clientX, y: e.clientY })
+    62→      return
+    63→    }
+    64→
+    65→    if (draggingNode && flow) {
+    66→      const x = e.clientX - rect.left - dragOffset.x - canvasOffset.x
+    67→      const y = e.clientY - rect.top - dragOffset.y - canvasOffset.y
+    68→      const newNodes = flow.nodes.map(n =>
+    69→        n.id === draggingNode ? { ...n, position: { x: Math.max(0, x), y: Math.max(0, y) } } : n
+    70→      )
+    71→      updateFlowNodes(flow.id, newNodes)
+    72→    }
+    73→
+    74→    if (connectingFrom) {
+    75→      setMousePos({ x: e.clientX - rect.left - canvasOffset.x, y: e.clientY - rect.top - canvasOffset.y })
+    76→    }
+    77→  }
+    78→
+    79→  if (!bot || !flow) {
+    80→    return (
+    81→      <div className="flex-1 flex items-center justify-center text-slate-500">
+    82→        <div className="text-center">
+    83→          <Brain className="w-16 h-16 mx-auto text-slate-300 mb-4" />
+    84→          <h2 className="text-xl font-semibold mb-2">Selecciona un flujo</h2>
+    85→          <p className="text-sm">Ve a Chatbots y selecciona un flujo para editar</p>
+    86→          <Button className="mt-4 bg-emerald-600 hover:bg-emerald-700" onClick={() => setCurrentView('bots')}>
+    87→            Ver Chatbots
+    88→          </Button>
+    89→        </div>
+    90→      </div>
+    91→    )
+    92→  }
+    93→
+    94→  const selectedNode = flow.nodes.find(n => n.id === selectedNodeId)
+    95→
+    96→  const handleCanvasDrop = (e: React.DragEvent) => {
+    97→    e.preventDefault()
+    98→    const nodeType = e.dataTransfer.getData('nodeType') as FlowNode['type']
+    99→    if (!nodeType) return
+   100→
+   101→    const rect = canvasRef.current?.getBoundingClientRect()
+   102→    if (!rect) return
+   103→
+   104→    const x = e.clientX - rect.left - canvasOffset.x
+   105→    const y = e.clientY - rect.top - canvasOffset.y
+   106→
+   107→    const typeInfo = nodeTypes.find(t => t.type === nodeType)
+   108→    const newNode: FlowNode = {
+   109→      id: uuidv4(),
+   110→      type: nodeType,
+   111→      position: { x, y },
+   112→      data: {
+   113→        label: typeInfo?.label || 'Nodo',
+   114→        content: nodeType === 'message' ? 'Escribe tu mensaje aquí...' : undefined,
+   115→        buttons: nodeType === 'buttons' ? [{ id: uuidv4(), text: 'Opción 1' }, { id: uuidv4(), text: 'Opción 2' }] : undefined,
+   116→        transferTeam: nodeType === 'transfer' ? teams[0]?.id : undefined,
+   117→        transferMessage: nodeType === 'transfer' ? 'Te estoy transfiriendo con un agente...' : undefined,
+   118→        aiPrompt: nodeType === 'ai_response' ? 'Ayuda al usuario con su consulta.' : undefined,
+   119→      },
+   120→    }
+   121→    addFlowNode(flow.id, newNode)
+   122→  }
+   123→
+   124→  const handleNodeDragStart = (e: React.MouseEvent, nodeId: string) => {
+   125→    e.stopPropagation()
+   126→    const node = flow.nodes.find(n => n.id === nodeId)
+   127→    if (!node) return
+   128→    const rect = canvasRef.current?.getBoundingClientRect()
+   129→    if (!rect) return
+   130→    setDraggingNode(nodeId)
+   131→    setDragOffset({
+   132→      x: e.clientX - rect.left - node.position.x - canvasOffset.x,
+   133→      y: e.clientY - rect.top - node.position.y - canvasOffset.y,
+   134→    })
+   135→  }
+   136→
+   137→  const handleMouseUp = () => {
+   138→    setDraggingNode(null)
+   139→    if (isPanning) setIsPanning(false)
+   140→  }
+   141→
+   142→  const handleOutputClick = (nodeId: string, handle?: string) => {
+   143→    if (connectingFrom === nodeId) {
+   144→      setConnectingFrom(null)
+   145→      setConnectingHandle(null)
+   146→      return
+   147→    }
+   148→    if (connectingFrom && connectingFrom !== nodeId) {
+   149→      const exists = flow.edges.some(e => e.source === connectingFrom && e.target === nodeId && e.sourceHandle === connectingHandle)
+   150→      if (!exists) {
+   151→        const newEdge: FlowEdge = {
+   152→          id: uuidv4(),
+   153→          source: connectingFrom,
+   154→          target: nodeId,
+   155→          sourceHandle: connectingHandle || undefined,
+   156→          label: connectingHandle ? flow.nodes.find(n => n.id === connectingFrom)?.data.buttons?.find(b => b.id === connectingHandle)?.text : undefined,
+   157→        }
+   158→        updateFlowEdges(flow.id, [...flow.edges, newEdge])
+   159→      }
+   160→      setConnectingFrom(null)
+   161→      setConnectingHandle(null)
+   162→    } else {
+   163→      setConnectingFrom(nodeId)
+   164→      setConnectingHandle(handle || null)
+   165→    }
+   166→  }
+   167→
+   168→  const handleDeleteNode = (nodeId: string) => {
+   169→    deleteFlowNode(flow.id, nodeId)
+   170→    if (selectedNodeId === nodeId) {
+   171→      setSelectedNodeId(null)
+   172→      setShowNodeEditor(false)
+   173→    }
+   174→  }
+   175→
+   176→  const handleSelectNode = (nodeId: string) => {
+   177→    setSelectedNodeId(nodeId)
+   178→    const node = flow.nodes.find(n => n.id === nodeId)
+   179→    if (node) {
+   180→      setEditContent(node.data.content || '')
+   181→      setEditButtons(node.data.buttons || [])
+   182→      setEditTransferTeam(node.data.transferTeam || '')
+   183→      setEditTransferMsg(node.data.transferMessage || '')
+   184→      setEditAiPrompt(node.data.aiPrompt || '')
+   185→      setShowNodeEditor(true)
+   186→    }
+   187→  }
+   188→
+   189→  const handleSaveNodeEdit = () => {
+   190→    if (!selectedNodeId) return
+   191→    updateFlowNode(flow.id, selectedNodeId, {
+   192→      content: editContent,
+   193→      buttons: editButtons,
+   194→      transferTeam: editTransferTeam,
+   195→      transferMessage: editTransferMsg,
+   196→      aiPrompt: editAiPrompt,
+   197→    })
+   198→  }
+   199→
+   200→  const getNodeColor = (type: FlowNode['type']) => {
+   201→    return nodeTypes.find(t => t.type === type)?.color || 'bg-slate-500'
+   202→  }
+   203→
+   204→  const getNodeIcon = (type: FlowNode['type']) => {
+   205→    return nodeTypes.find(t => t.type === type)?.icon || <Settings className="w-4 h-4" />
+   206→  }
+   207→
+   208→  const renderNode = (node: FlowNode) => {
+   209→    const isSelected = selectedNodeId === node.id
+   210→    const isConnecting = connectingFrom === node.id
+   211→    const nodeW = node.type === 'buttons' ? 220 : node.type === 'condition' ? 180 : 180
+   212→
+   213→    return (
+   214→      <div
+   215→        key={node.id}
+   216→        className={`absolute select-none group ${isSelected ? 'z-20' : 'z-10'}`}
+   217→        style={{ left: node.position.x, top: node.position.y, width: nodeW }}
+   218→        onDoubleClick={() => handleSelectNode(node.id)}
+   219→      >
+   220→        <div
+   221→          className={`rounded-xl border-2 shadow-lg cursor-move transition-all ${
+   222→            isSelected ? 'border-emerald-400 shadow-emerald-200/50' :
+   223→            isConnecting ? 'border-emerald-400 animate-pulse' :
+   224→            'border-slate-200 hover:border-slate-300'
+   225→          } bg-white`}
+   226→          onMouseDown={(e) => handleNodeDragStart(e, node.id)}
+   227→          onClick={(e) => { e.stopPropagation(); setSelectedNodeId(node.id) }}
+   228→        >
+   229→          <div className={`flex items-center gap-2 px-3 py-2 rounded-t-[10px] text-white text-xs font-semibold ${getNodeColor(node.type)}`}>
+   230→            {getNodeIcon(node.type)}
+   231→            <span className="truncate">{node.data.label}</span>
+   232→          </div>
+   233→
+   234→          <div className="px-3 py-2 text-[11px] text-slate-600 min-h-[32px]">
+   235→            {node.type === 'message' && <p className="truncate">{node.data.content}</p>}
+   236→            {node.type === 'buttons' && (
+   237→              <div className="space-y-1">
+   238→                {node.data.buttons?.map(b => (
+   239→                  <div key={b.id} className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-[10px] font-medium truncate">
+   240→                    {b.text}
+   241→                  </div>
+   242→                ))}
+   243→              </div>
+   244→            )}
+   245→            {node.type === 'condition' && <p className="truncate text-amber-600">Si {node.data.conditionField || '...'} {node.data.conditionOperator || '='} {node.data.conditionValue || '...'}</p>}
+   246→            {node.type === 'transfer' && <p className="truncate text-rose-600">→ {teams.find(t => t.id === node.data.transferTeam)?.name || 'Equipo'}</p>}
+   247→            {node.type === 'ai_response' && <p className="truncate text-violet-600">🤖 {node.data.aiPrompt?.substring(0, 30) || 'Prompt IA...'}</p>}
+   248→            {node.type === 'start' && <p className="text-emerald-600">▶ Punto de inicio</p>}
+   249→            {node.type === 'input' && <p className="truncate">💾 Guardar en: {node.data.variableName || 'variable'}</p>}
+   250→            {node.type === 'action' && <p className="truncate">⚡ {node.data.actionType || 'Acción'}</p>}
+   251→          </div>
+   252→
+   253→          {node.type !== 'start' && (
+   254→            <div
+   255→              className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-slate-300 hover:border-emerald-400 hover:bg-emerald-50 transition-colors cursor-pointer z-30"
+   256→              onClick={(e) => { e.stopPropagation(); handleOutputClick(node.id) }}
+   257→              title="Conectar entrada"
+   258→            />
+   259→          )}
+   260→
+   261→          {node.type === 'buttons' ? (
+   262→            <div className="absolute -right-2 flex flex-col gap-1" style={{ top: '50%', transform: 'translateY(-50%)' }}>
+   263→              {node.data.buttons?.map((b, idx) => (
+   264→                <div
+   265→                  key={b.id}
+   266→                  className="w-4 h-4 rounded-full bg-white border-2 border-purple-300 hover:border-emerald-400 hover:bg-emerald-50 transition-colors cursor-pointer z-30"
+   267→                  style={{ marginTop: idx === 0 ? 0 : 4 }}
+   268→                  onClick={(e) => { e.stopPropagation(); handleOutputClick(node.id, b.id) }}
+   269→                  title={`Conectar: ${b.text}`}
+   270→                />
+   271→              ))}
+   272→            </div>
+   273→          ) : (
+   274→            <div
+   275→              className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-slate-300 hover:border-emerald-400 hover:bg-emerald-50 transition-colors cursor-pointer z-30"
+   276→              onClick={(e) => { e.stopPropagation(); handleOutputClick(node.id) }}
+   277→              title="Conectar salida"
+   278→            />
+   279→          )}
+   280→
+   281→          {isSelected && (
+   282→            <button
+   283→              className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors z-30"
+   284→              onClick={(e) => { e.stopPropagation(); handleDeleteNode(node.id) }}
+   285→            >
+   286→              <X className="w-3 h-3" />
+   287→            </button>
+   288→          )}
+   289→        </div>
+   290→      </div>
+   291→    )
+   292→  }
+   293→
+   294→  const renderEdge = (edge: FlowEdge) => {
+   295→    const sourceNode = flow.nodes.find(n => n.id === edge.source)
+   296→    const targetNode = flow.nodes.find(n => n.id === edge.target)
+   297→    if (!sourceNode || !targetNode) return null
+   298→
+   299→    const sourceW = sourceNode.type === 'buttons' ? 220 : 180
+   300→    let sx: number, sy: number
+   301→
+   302→    if (edge.sourceHandle && sourceNode.type === 'buttons') {
+   303→      const btnIdx = sourceNode.data.buttons?.findIndex(b => b.id === edge.sourceHandle) ?? 0
+   304→      sx = sourceNode.position.x + sourceW + 2
+   305→      sy = sourceNode.position.y + 40 + btnIdx * 24
+   306→    } else {
+   307→      sx = sourceNode.position.x + sourceW + 2
+   308→      sy = sourceNode.position.y + 30
+   309→    }
+   310→
+   311→    const tx = targetNode.position.x - 2
+   312→    const ty = targetNode.position.y + 30
+   313→
+   314→    const midX = (sx + tx) / 2
+   315→
+   316→    return (
+   317→      <g key={edge.id}>
+   318→        <path
+   319→          d={`M ${sx} ${sy} C ${midX} ${sy}, ${midX} ${ty}, ${tx} ${ty}`}
+   320→          fill="none"
+   321→          stroke={connectingFrom === edge.source ? '#10b981' : '#94a3b8'}
+   322→          strokeWidth="2"
+   323→          className="transition-colors"
+   324→        />
+   325→        {edge.label && (
+   326→          <text
+   327→            x={midX}
+   328→            y={(sy + ty) / 2 - 8}
+   329→            textAnchor="middle"
+   330→            className="text-[10px] fill-slate-500 font-medium"
+   331→          >
+   332→            {edge.label}
+   333→          </text>
+   334→        )}
+   335→        <circle cx={tx} cy={ty} r="4" fill="#94a3b8" />
+   336→      </g>
+   337→    )
+   338→  }
+   339→
+   340→  const renderConnectingLine = () => {
+   341→    if (!connectingFrom) return null
+   342→    const sourceNode = flow.nodes.find(n => n.id === connectingFrom)
+   343→    if (!sourceNode) return null
+   344→    const sourceW = sourceNode.type === 'buttons' ? 220 : 180
+   345→
+   346→    let sx: number, sy: number
+   347→    if (connectingHandle && sourceNode.type === 'buttons') {
+   348→      const btnIdx = sourceNode.data.buttons?.findIndex(b => b.id === connectingHandle) ?? 0
+   349→      sx = sourceNode.position.x + sourceW + 2
+   350→      sy = sourceNode.position.y + 40 + btnIdx * 24
+   351→    } else {
+   352→      sx = sourceNode.position.x + sourceW + 2
+   353→      sy = sourceNode.position.y + 30
+   354→    }
+   355→
+   356→    const midX = (sx + mousePos.x) / 2
+   357→
+   358→    return (
+   359→      <path
+   360→        d={`M ${sx} ${sy} C ${midX} ${sy}, ${midX} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`}
+   361→        fill="none"
+   362→        stroke="#10b981"
+   363→        strokeWidth="2"
+   364→        strokeDasharray="6 3"
+   365→      />
+   366→    )
+   367→  }
+   368→
+   369→  return (
+   370→    <div className="flex h-screen">
+   371→      {/* Sidebar - Node Palette */}
+   372→      <div className="w-56 bg-white border-r border-slate-200 flex flex-col">
+   373→        <div className="p-3 border-b border-slate-200">
+   374→          <Button variant="ghost" size="sm" className="gap-1 text-slate-600 mb-2" onClick={() => setCurrentView('bots')}>
+   375→            <ArrowLeft className="w-4 h-4" /> Volver
+   376→          </Button>
+   377→          <h2 className="font-bold text-sm text-slate-900">{flow.name}</h2>
+   378→          <p className="text-xs text-slate-500">{bot.name}</p>
+   379→        </div>
+   380→        <div className="p-3 border-b border-slate-200">
+   381→          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Componentes</h3>
+   382→          <p className="text-[10px] text-slate-400 mb-2">Arrastra al canvas para agregar</p>
+   383→        </div>
+   384→        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+   385→          {nodeTypes.map((nt) => (
+   386→            <div
+   387→              key={nt.type}
+   388→              draggable
+   389→              onDragStart={(e) => e.dataTransfer.setData('nodeType', nt.type)}
+   390→              className="flex items-center gap-2 p-2 rounded-lg cursor-grab hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all active:cursor-grabbing"
+   391→            >
+   392→              <div className={`w-8 h-8 rounded-lg ${nt.color} text-white flex items-center justify-center flex-shrink-0`}>
+   393→                {nt.icon}
+   394→              </div>
+   395→              <div className="min-w-0">
+   396→                <p className="text-xs font-medium text-slate-900">{nt.label}</p>
+   397→                <p className="text-[10px] text-slate-400 truncate">{nt.description}</p>
+   398→              </div>
+   399→            </div>
+   400→          ))}
+   401→        </div>
+   402→      </div>
+   403→
+   404→      {/* Canvas */}
+   405→      <div className="flex-1 flex flex-col bg-slate-50">
+   406→        <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4">
+   407→          <div className="flex items-center gap-2">
+   408→            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+   409→              <Play className="w-3 h-3 mr-1" />
+   410→              {flow.nodes.length} nodos
+   411→            </Badge>
+   412→            <Badge variant="outline" className="text-slate-600">
+   413→              <GitBranch className="w-3 h-3 mr-1" />
+   414→              {flow.edges.length} conexiones
+   415→            </Badge>
+   416→          </div>
+   417→          <div className="flex items-center gap-2">
+   418→            <span className="text-xs text-slate-400">Clic en ● para conectar nodos | Doble-clic para editar</span>
+   419→            <Button size="sm" variant="outline" className="gap-1" onClick={() => { setCanvasOffset({ x: 0, y: 0 }) }}>
+   420→              Centrar
+   421→            </Button>
+   422→          </div>
+   423→        </div>
+   424→
+   425→        <div
+   426→          ref={canvasRef}
+   427→          className="flex-1 relative overflow-hidden"
+   428→          onDrop={handleCanvasDrop}
+   429→          onDragOver={(e) => e.preventDefault()}
+   430→          onMouseMove={handleMouseMove}
+   431→          onMouseUp={handleMouseUp}
+   432→          onMouseDown={(e) => {
+   433→            if (e.target === canvasRef.current || (e.target as HTMLElement).tagName === 'svg') {
+   434→              setIsPanning(true)
+   435→              setPanStart({ x: e.clientX, y: e.clientY })
+   436→              setSelectedNodeId(null)
+   437→              setShowNodeEditor(false)
+   438→            }
+   439→          }}
+   440→          style={{ cursor: isPanning ? 'grabbing' : connectingFrom ? 'crosshair' : 'default' }}
+   441→        >
+   442→          {/* Grid background */}
+   443→          <div
+   444→            className="absolute inset-0"
+   445→            style={{
+   446→              backgroundImage: 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)',
+   447→              backgroundSize: '20px 20px',
+   448→              transform: `translate(${canvasOffset.x % 20}px, ${canvasOffset.y % 20}px)`,
+   449→            }}
+   450→          />
+   451→
+   452→          <svg className="absolute inset-0 w-full h-full" style={{ transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px)` }}>
+   453→            {flow.edges.map(renderEdge)}
+   454→            {renderConnectingLine()}
+   455→          </svg>
+   456→
+   457→          <div style={{ transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px)` }}>
+   458→            {flow.nodes.map(renderNode)}
+   459→          </div>
+   460→        </div>
+   461→      </div>
+   462→
+   463→      {/* Node Editor Panel */}
+   464→      {showNodeEditor && selectedNode && (
+   465→        <div className="w-72 bg-white border-l border-slate-200 flex flex-col">
+   466→          <div className="p-3 border-b border-slate-200 flex items-center justify-between">
+   467→            <div className="flex items-center gap-2">
+   468→              <div className={`w-7 h-7 rounded-lg ${getNodeColor(selectedNode.type)} text-white flex items-center justify-center`}>
+   469→                {getNodeIcon(selectedNode.type)}
+   470→              </div>
+   471→              <span className="font-semibold text-sm">{selectedNode.data.label}</span>
+   472→            </div>
+   473→            <button onClick={() => setShowNodeEditor(false)} className="text-slate-400 hover:text-slate-600">
+   474→              <X className="w-4 h-4" />
+   475→            </button>
+   476→          </div>
+   477→
+   478→          <div className="flex-1 overflow-y-auto p-3 space-y-4">
+   479→            <div>
+   480→              <label className="text-xs font-medium text-slate-700 mb-1 block">Etiqueta del nodo</label>
+   481→              <Input
+   482→                value={selectedNode.data.label}
+   483→                onChange={(e) => updateFlowNode(flow.id, selectedNode.id, { label: e.target.value })}
+   484→                className="text-sm"
+   485→              />
+   486→            </div>
+   487→
+   488→            {(selectedNode.type === 'message' || selectedNode.type === 'start') && (
+   489→              <div>
+   490→                <label className="text-xs font-medium text-slate-700 mb-1 block">Contenido del mensaje</label>
+   491→                <Textarea
+   492→                  value={editContent}
+   493→                  onChange={(e) => setEditContent(e.target.value)}
+   494→                  onBlur={handleSaveNodeEdit}
+   495→                  rows={4}
+   496→                  className="text-sm"
+   497→                  placeholder="Escribe el mensaje que se enviará..."
+   498→                />
+   499→              </div>
+   500→            )}
+   501→
+   502→            {selectedNode.type === 'buttons' && (
+   503→              <>
+   504→                <div>
+   505→                  <label className="text-xs font-medium text-slate-700 mb-1 block">Mensaje arriba de botones</label>
+   506→                  <Textarea
+   507→                    value={editContent}
+   508→                    onChange={(e) => setEditContent(e.target.value)}
+   509→                    onBlur={handleSaveNodeEdit}
+   510→                    rows={2}
+   511→                    className="text-sm"
+   512→                    placeholder="Texto descriptivo..."
+   513→                  />
+   514→                </div>
+   515→                <div>
+   516→                  <div className="flex items-center justify-between mb-2">
+   517→                    <label className="text-xs font-medium text-slate-700">Botones clicables</label>
+   518→                    <Button
+   519→                      size="sm"
+   520→                      variant="outline"
+   521→                      className="h-6 text-xs gap-1"
+   522→                      onClick={() => {
+   523→                        const newBtns = [...editButtons, { id: uuidv4(), text: `Opción ${editButtons.length + 1}` }]
+   524→                        setEditButtons(newBtns)
+   525→                        updateFlowNode(flow.id, selectedNode.id, { buttons: newBtns })
+   526→                      }}
+   527→                    >
+   528→                      <Plus className="w-3 h-3" /> Agregar
+   529→                    </Button>
+   530→                  </div>
+   531→                  <div className="space-y-2">
+   532→                    {editButtons.map((btn, idx) => (
+   533→                      <div key={btn.id} className="flex items-center gap-1">
+   534→                        <Input
+   535→                          value={btn.text}
+   536→                          onChange={(e) => {
+   537→                            const newBtns = editButtons.map((b, i) => i === idx ? { ...b, text: e.target.value } : b)
+   538→                            setEditButtons(newBtns)
+   539→                            updateFlowNode(flow.id, selectedNode.id, { buttons: newBtns })
+   540→                          }}
+   541→                          className="text-xs h-8"
+   542→                        />
+   543→                        <Button
+   544→                          size="sm"
+   545→                          variant="ghost"
+   546→                          className="h-8 w-8 p-0 text-slate-400 hover:text-red-500"
+   547→                          onClick={() => {
+   548→                            const newBtns = editButtons.filter((_, i) => i !== idx)
+   549→                            setEditButtons(newBtns)
+   550→                            updateFlowNode(flow.id, selectedNode.id, { buttons: newBtns })
+   551→                          }}
+   552→                        >
+   553→                          <X className="w-3 h-3" />
+   554→                        </Button>
+   555→                      </div>
+   556→                    ))}
+   557→                  </div>
+   558→                </div>
+   559→              </>
+   560→            )}
+   561→
+   562→            {selectedNode.type === 'condition' && (
+   563→              <div className="space-y-2">
+   564→                <div>
+   565→                  <label className="text-xs font-medium text-slate-700 mb-1 block">Campo</label>
+   566→                  <Input className="text-sm h-8" placeholder="Ej: ciudad" />
+   567→                </div>
+   568→                <div>
+   569→                  <label className="text-xs font-medium text-slate-700 mb-1 block">Operador</label>
+   570→                  <Select>
+   571→                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+   572→                    <SelectContent>
+   573→                      <SelectItem value="eq">Igual a</SelectItem>
+   574→                      <SelectItem value="neq">Diferente de</SelectItem>
+   575→                      <SelectItem value="contains">Contiene</SelectItem>
+   576→                      <SelectItem value="gt">Mayor que</SelectItem>
+   577→                      <SelectItem value="lt">Menor que</SelectItem>
+   578→                    </SelectContent>
+   579→                  </Select>
+   580→                </div>
+   581→                <div>
+   582→                  <label className="text-xs font-medium text-slate-700 mb-1 block">Valor</label>
+   583→                  <Input className="text-sm h-8" placeholder="Valor de comparación" />
+   584→                </div>
+   585→              </div>
+   586→            )}
+   587→
+   588→            {selectedNode.type === 'transfer' && (
+   589→              <div className="space-y-2">
+   590→                <div>
+   591→                  <label className="text-xs font-medium text-slate-700 mb-1 block">Transferir a equipo</label>
+   592→                  <Select value={editTransferTeam} onValueChange={(v) => { setEditTransferTeam(v); updateFlowNode(flow.id, selectedNode.id, { transferTeam: v }) }}>
+   593→                    <SelectTrigger className="text-sm"><SelectValue placeholder="Seleccionar equipo" /></SelectTrigger>
+   594→                    <SelectContent>
+   595→                      {teams.map(t => (
+   596→                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+   597→                      ))}
+   598→                    </SelectContent>
+   599→                  </Select>
+   600→                </div>
+   601→                <div>
+   602→                  <label className="text-xs font-medium text-slate-700 mb-1 block">Mensaje de transferencia</label>
+   603→                  <Textarea
+   604→                    value={editTransferMsg}
+   605→                    onChange={(e) => setEditTransferMsg(e.target.value)}
+   606→                    onBlur={handleSaveNodeEdit}
+   607→                    rows={3}
+   608→                    className="text-sm"
+   609→                    placeholder="Mensaje antes de transferir..."
+   610→                  />
+   611→                </div>
+   612→                {editTransferTeam && (
+   613→                  <div className="p-2 bg-rose-50 rounded-lg">
+   614→                    <p className="text-xs font-medium text-rose-700">
+   615→                      Se transferirá a: {teams.find(t => t.id === editTransferTeam)?.name}
+   616→                    </p>
+   617→                    <p className="text-[10px] text-rose-500 mt-1">
+   618→                      Miembros: {teams.find(t => t.id === editTransferTeam)?.members.join(', ')}
+   619→                    </p>
+   620→                  </div>
+   621→                )}
+   622→              </div>
+   623→            )}
+   624→
+   625→            {selectedNode.type === 'ai_response' && (
+   626→              <div>
+   627→                <label className="text-xs font-medium text-slate-700 mb-1 block">Prompt para IA</label>
+   628→                <Textarea
+   629→                  value={editAiPrompt}
+   630→                  onChange={(e) => setEditAiPrompt(e.target.value)}
+   631→                  onBlur={handleSaveNodeEdit}
+   632→                  rows={4}
+   633→                  className="text-sm"
+   634→                  placeholder="Instrucciones para la respuesta de IA..."
+   635→                />
+   636→                <p className="text-[10px] text-slate-400 mt-1">La IA generará una respuesta basada en este prompt y el contexto de la conversación.</p>
+   637→              </div>
+   638→            )}
+   639→
+   640→            {selectedNode.type === 'input' && (
+   641→              <div>
+   642→                <label className="text-xs font-medium text-slate-700 mb-1 block">Nombre de variable</label>
+   643→                <Input className="text-sm h-8" placeholder="Ej: email_usuario" />
+   644→                <p className="text-[10px] text-slate-400 mt-1">La respuesta del usuario se guardará en esta variable.</p>
+   645→              </div>
+   646→            )}
+   647→
+   648→            {selectedNode.type === 'action' && (
+   649→              <div className="space-y-2">
+   650→                <div>
+   651→                  <label className="text-xs font-medium text-slate-700 mb-1 block">Tipo de acción</label>
+   652→                  <Select>
+   653→                    <SelectTrigger className="text-sm"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+   654→                    <SelectContent>
+   655→                      <SelectItem value="send_email">Enviar email</SelectItem>
+   656→                      <SelectItem value="webhook">Webhook</SelectItem>
+   657→                      <SelectItem value="set_variable">Establecer variable</SelectItem>
+   658→                      <SelectItem value="api_call">Llamada API</SelectItem>
+   659→                    </SelectContent>
+   660→                  </Select>
+   661→                </div>
+   662→              </div>
+   663→            )}
+   664→          </div>
+   665→
+   666→          <div className="p-3 border-t border-slate-200">
+   667→            <Button
+   668→              variant="destructive"
+   669→              size="sm"
+   670→              className="w-full gap-1"
+   671→              onClick={() => handleDeleteNode(selectedNode.id)}
+   672→            >
+   673→              <Trash2 className="w-4 h-4" /> Eliminar Nodo
+   674→            </Button>
+   675→          </div>
+   676→        </div>
+   677→      )}
+   678→    </div>
+   679→  )
+   680→}
+   681→

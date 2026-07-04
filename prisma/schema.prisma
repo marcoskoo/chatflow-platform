@@ -99,3 +99,31 @@ model Channel {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  name        String
+  key         String   @unique
+  permissions String   @default("[\"read\",\"write\"]")
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model WebhookConfig {
+  id              String   @id @default(cuid())
+  channel         String   @unique // whatsapp, messenger, instagram, telegram
+  verifyToken     String?  // Token for webhook verification (WhatsApp/Meta)
+  accessToken     String?  // Page/Bot access token for sending messages
+  appSecret       String?  // App secret for signature verification
+  phoneNumberId   String?  // WhatsApp Cloud API phone number ID
+  pageId          String?  // Facebook/Instagram Page ID
+  botToken        String?  // Telegram Bot token
+  webhookSecret   String?  // Secret for incoming webhook validation
+  apiVersion      String?  // API version (e.g., v18.0 for Meta)
+  baseUrl         String?  // Custom API base URL
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
