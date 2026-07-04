@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Bot {
@@ -109,21 +110,25 @@ model ApiKey {
   lastUsedAt  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("api_keys")
 }
 
 model WebhookConfig {
   id              String   @id @default(cuid())
   channel         String   @unique // whatsapp, messenger, instagram, telegram
-  verifyToken     String?  // Token for webhook verification (WhatsApp/Meta)
-  accessToken     String?  // Page/Bot access token for sending messages
-  appSecret       String?  // App secret for signature verification
-  phoneNumberId   String?  // WhatsApp Cloud API phone number ID
-  pageId          String?  // Facebook/Instagram Page ID
-  botToken        String?  // Telegram Bot token
-  webhookSecret   String?  // Secret for incoming webhook validation
-  apiVersion      String?  // API version (e.g., v18.0 for Meta)
-  baseUrl         String?  // Custom API base URL
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  verifyToken     String?  @map("verify_token") // Token for webhook verification (WhatsApp/Meta)
+  accessToken     String?  @map("access_token") // Page/Bot access token for sending messages
+  appSecret       String?  @map("app_secret") // App secret for signature verification
+  phoneNumberId   String?  @map("phone_number_id") // WhatsApp Cloud API phone number ID
+  pageId          String?  @map("page_id") // Facebook/Instagram Page ID
+  botToken        String?  @map("bot_token") // Telegram Bot token
+  webhookSecret   String?  @map("webhook_secret") // Secret for incoming webhook validation
+  apiVersion      String?  @map("api_version") // API version (e.g., v18.0 for Meta)
+  baseUrl         String?  @map("base_url") // Custom API base URL
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("webhook_configs")
 }
