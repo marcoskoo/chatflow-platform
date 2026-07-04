@@ -10,6 +10,7 @@ import { ConversationPanel } from '@/components/chatbot/ConversationPanel'
 import { ChannelManager } from '@/components/chatbot/ChannelManager'
 import { TeamManager } from '@/components/chatbot/TeamManager'
 import { ApiDocs } from '@/components/chatbot/ApiDocs'
+import { ApiKeyManager } from '@/components/chatbot/ApiKeyManager'
 
 export default function Home() {
   const { currentView } = useChatbotStore()
@@ -28,6 +29,8 @@ export default function Home() {
         return <ChannelManager />
       case 'teams':
         return <TeamManager />
+      case 'security':
+        return <ApiKeyManager />
       case 'api':
         return <ApiDocs />
       default:
