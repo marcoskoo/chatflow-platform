@@ -8,46 +8,64 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ─── Core models (existing) ─────────────────────────────────────────────────
+
 model Bot {
   id          String   @id @default(cuid())
   name        String
   description String?
   status      String   @default("draft")
   channels    String   @default("")
+  language    String   @default("es")
+  category    String?  // industry: ecommerce, restaurant, healthcare, banking...
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   flows       Flow[]
+  conversations Conversation[]
+  knowledgeBases KnowledgeBase[]
+  abTests     ABTest[]
+  broadcasts  Broadcast[]
 }
 
 model Flow {
-  id        String   @id @default(cuid())
-  name      String
-  botId     String
-  bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
-  nodes     String   @default("[]")
-  edges     String   @default("[]")
-  trigger   String   @default("{}")
-  isActive  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  name       String
+  botId      String
+  bot        Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  nodes      String   @default("[]")
+  edges      String   @default("[]")
+  trigger    String   @default("{}")
+  isActive   Boolean  @default(false)
+  version    Int      @default(1)
+  abVariant  String?  // "A" | "B" | null
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Conversation {
-  id          String   @id @default(cuid())
-  botId       String
-  channel     String
-  contactName String?
+  id            String   @id @default(cuid())
+  botId         String?
+  channel       String
+  bot           Bot?     @relation(fields: [botId], references: [id], onDelete: SetNull)
+  contactId     String?
+  contact       Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  contactName   String?
   contactAvatar String?
-  lastMessage String?
-  status      String   @default("active")
-  assignedTo  String?
-  team        String?
-  unread      Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  messages    Message[]
-  tags        Tag[]
-  notes       Note[]
+  lastMessage   String?
+  status        String   @default("active")
+  assignedTo    String?
+  team          String?
+  unread        Int      @default(0)
+  language      String   @default("es")
+  csatScore     Int?
+  csatComment   String?
+  slaDeadline   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  messages      Message[]
+  tags          Tag[]
+  notes         Note[]
+  events        ConversationEvent[]
 }
 
 model Message {
@@ -59,7 +77,9 @@ model Message {
   type           String   @default("text")
   buttons        String?
   attachments    String?
+  translation    String?
   isBot          Boolean  @default(false)
+  isRead         Boolean  @default(false)
   createdAt      DateTime @default(now())
 }
 
@@ -81,12 +101,23 @@ model Note {
   createdAt      DateTime @default(now())
 }
 
+model ConversationEvent {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  type           String   // "transfer", "close", "assign", "tag", "sla_breach", "bot_handoff"...
+  data           String   @default("{}")
+  actor          String?
+  createdAt      DateTime @default(now())
+}
+
 model Team {
   id          String   @id @default(cuid())
   name        String
   description String?
   members     String   @default("[]")
   color       String   @default("#10b981")
+  skills      String   @default("[]") // routing skills
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -116,19 +147,503 @@ model ApiKey {
 
 model WebhookConfig {
   id              String   @id @default(cuid())
-  channel         String   @unique // whatsapp, messenger, instagram, telegram
-  verifyToken     String?  @map("verify_token") // Token for webhook verification (WhatsApp/Meta)
-  accessToken     String?  @map("access_token") // Page/Bot access token for sending messages
-  appSecret       String?  @map("app_secret") // App secret for signature verification
-  phoneNumberId   String?  @map("phone_number_id") // WhatsApp Cloud API phone number ID
-  pageId          String?  @map("page_id") // Facebook/Instagram Page ID
-  botToken        String?  @map("bot_token") // Telegram Bot token
-  webhookSecret   String?  @map("webhook_secret") // Secret for incoming webhook validation
-  apiVersion      String?  @map("api_version") // API version (e.g., v18.0 for Meta)
-  baseUrl         String?  @map("base_url") // Custom API base URL
+  channel         String   @unique
+  verifyToken     String?  @map("verify_token")
+  accessToken     String?  @map("access_token")
+  appSecret       String?  @map("app_secret")
+  phoneNumberId   String?  @map("phone_number_id")
+  pageId          String?  @map("page_id")
+  botToken        String?  @map("bot_token")
+  webhookSecret   String?  @map("webhook_secret")
+  apiVersion      String?  @map("api_version")
+  baseUrl         String?  @map("base_url")
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("webhook_configs")
+}
+
+// ─── CRM: Contacts ──────────────────────────────────────────────────────────
+
+model Contact {
+  id          String   @id @default(cuid())
+  name        String?
+  email       String?
+  phone       String?
+  externalId  String?  // channel-specific id (wa_id, psid, etc.)
+  channel     String?
+  avatar      String?
+  language    String   @default("es")
+  attributes  String   @default("{}") // free-form custom fields
+  tags        String   @default("[]")
+  optIn       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  conversations Conversation[]
+  broadcastReceipts BroadcastReceipt[]
+}
+
+// ─── Broadcast & Campaigns ───────────────────────────────────────────────────
+
+model Broadcast {
+  id          String   @id @default(cuid())
+  name        String
+  botId       String?
+  bot         Bot?     @relation(fields: [botId], references: [id], onDelete: SetNull)
+  channel     String
+  segment     String   @default("{}") // filter JSON: tags, language, channel
+  message     String
+  messageType String   @default("text")
+  templateName String? // WhatsApp HSM template name
+  templateParams String? // JSON
+  status      String   @default("draft") // draft, scheduled, sending, sent, failed
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  totalSent   Int      @default(0)
+  totalDelivered Int   @default(0)
+  totalRead   Int      @default(0)
+  totalFailed Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  receipts    BroadcastReceipt[]
+}
+
+model BroadcastReceipt {
+  id          String   @id @default(cuid())
+  broadcastId String
+  broadcast   Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  contactId   String?
+  contact     Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  status      String   @default("pending") // pending, sent, delivered, read, failed
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+}
+
+// ─── Canned Responses ───────────────────────────────────────────────────────
+
+model CannedResponse {
+  id        String   @id @default(cuid())
+  shortcut  String   @unique // e.g. "/hello"
+  title     String
+  content   String
+  category  String   @default("general")
+  language  String   @default("es")
+  team      String?  // optional team scope
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Knowledge Base (RAG) ───────────────────────────────────────────────────
+
+model KnowledgeBase {
+  id          String   @id @default(cuid())
+  botId       String
+  bot         Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  title       String
+  content     String   // raw text content
+  source      String   @default("manual") // manual, pdf, url, docx
+  sourceUrl   String?
+  embeddings  String?  // JSON vector (or reference to vector store)
+  metadata    String   @default("{}")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── Integrations & Outgoing Webhooks ───────────────────────────────────────
+
+model Integration {
+  id        String   @id @default(cuid())
+  type      String   // slack, google_sheets, zapier, make, n8n, hubspot, salesforce, shopify, woocommerce, stripe, email
+  name      String
+  config    String   @default("{}") // encrypted credentials
+  isActive  Boolean  @default(true)
+  events    String   @default("[]") // subscribed events
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OutgoingWebhook {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  method    String   @default("POST")
+  headers   String   @default("{}")
+  bodyTemplate String @default("{}")
+  events    String   @default("[]") // message.received, conversation.closed...
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Audit & Security ───────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actor     String   // user id, api key name, "system"
+  action    String   // "create", "update", "delete", "login", "export"...
+  resource  String   // model name
+  resourceId String?
+  metadata  String   @default("{}")
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // admin, manager, agent, viewer, billing
+  permissions String   @default("[]") // granular scopes
+  description String?
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String
+  passwordHash String?
+  roleId      String?
+  role        Role?    @relation(fields: [roleId], references: [id])
+  ssoProvider String?  // google, microsoft, saml
+  ssoId       String?
+  twoFactorSecret String?
+  isActive    Boolean  @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── A/B Testing ────────────────────────────────────────────────────────────
+
+model ABTest {
+  id          String   @id @default(cuid())
+  name        String
+  botId       String
+  bot         Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  flowIdA     String
+  flowIdB     String?
+  trafficSplit Int     @default(50) // % to variant A
+  status      String   @default("running") // draft, running, completed
+  winner      String?  // "A" | "B"
+  metricGoal  String   @default("conversion") // conversion, csat, response_time
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  variantAConversions Int @default(0)
+  variantAVisitors Int @default(0)
+  variantBConversions Int @default(0)
+  variantBVisitors Int @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── GDPR / Data Privacy ────────────────────────────────────────────────────
+
+model DataRequest {
+  id        String   @id @default(cuid())
+  type      String   // "export" | "delete" (right to be forgotten)
+  contactId String?
+  email     String?
+  status    String   @default("pending") // pending, processing, completed, failed
+  resultUrl String?  // signed URL for exports
+  requestedBy String?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+}
+
+model RetentionPolicy {
+  id           String   @id @default(cuid())
+  resourceType String   @unique // conversations, messages, audit_logs
+  retentionDays Int     @default(365)
+  autoDelete   Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── Marketplace ────────────────────────────────────────────────────────────
+
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  category    String   // ecommerce, restaurant, healthcare, banking, real_estate, education
+  industry    String?
+  flowData    String   // serialized nodes + edges
+  preview     String?
+  author      String   @default("ChatFlow")
+  downloads   Int      @default(0)
+  rating      Float    @default(0)
+  isPublic    Boolean  @default(true)
+  isFeatured  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── Billing ────────────────────────────────────────────────────────────────
+
+model Subscription {
+  id          String   @id @default(cuid())
+  customerId  String   @unique
+  plan        String   @default("free") // free, pro, business, enterprise
+  status      String   @default("active") // active, canceled, past_due, trialing
+  seats       Int      @default(1)
+  conversationsLimit Int @default(1000)
+  messagesLimit Int    @default(10000)
+  stripeSubscriptionId String? @unique
+  stripeCustomerId     String?
+  stripePriceId        String?
+  cancelAtPeriodEnd    Boolean  @default(false)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  invoices    Invoice[]
+  sunatDocuments SunatDocument[]
+  manualPayments ManualPayment[]
+}
+
+model UsageRecord {
+  id           String   @id @default(cuid())
+  subscriptionId String?
+  metric       String   // conversations, messages, ai_tokens, storage_mb
+  count        Int      @default(0)
+  periodStart  DateTime
+  periodEnd    DateTime
+  createdAt    DateTime @default(now())
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  subscriptionId String?
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+  stripeInvoiceId String? @unique
+  amount      Int      // in cents
+  currency    String   @default("usd")
+  status      String   @default("open") // open, paid, void, uncollectible
+  pdfUrl      String?
+  hostedInvoiceUrl String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  sunatDocument SunatDocument?
+}
+
+// ─── SUNAT Electronic Invoicing (Perú) ───────────────────────────────────────
+
+model CustomerTaxInfo {
+  id              String   @id @default(cuid())
+  customerId      String   @unique // maps to Subscription.customerId
+  docType         String   // "1"=DNI, "6"=RUC, "4"=Carnet Extranjería, "7"=Pasaporte
+  docNumber       String   // 8 dígitos DNI, 11 dígitos RUC
+  razonSocial     String   // Nombre o razón social
+  address         String?
+  district        String?
+  province        String?
+  department      String?
+  ubigeo          String?  // código INEI 6 dígitos
+  email           String?
+  phone           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  sunatDocuments  SunatDocument[]
+}
+
+model SunatDocument {
+  id              String   @id @default(cuid())
+  // Tipo de comprobante: "01"=Factura, "03"=Boleta, "07"=Nota de Crédito, "08"=Nota de Débito
+  tipoDocumento   String
+  serie           String   // F001, B001, etc.
+  correlativo     Int      // número correlativo 1, 2, 3...
+  // Identificación
+  customerDocType String   // "6" RUC, "1" DNI
+  customerDocNumber String
+  customerName    String
+  customerAddress String?
+  // Totales (en soles)
+  moneda          String   @default("PEN")
+  totalGravada    Decimal  @db.Decimal(12, 2) // base imponible
+  totalIgv        Decimal  @db.Decimal(12, 2) // 18% IGV
+  totalExonerada  Decimal  @db.Decimal(12, 2) @default(0)
+  totalInafecta   Decimal  @db.Decimal(12, 2) @default(0)
+  totalGratuita   Decimal  @db.Decimal(12, 2) @default(0)
+  totalDescuento  Decimal  @db.Decimal(12, 2) @default(0)
+  total           Decimal  @db.Decimal(12, 2) // total a pagar (incluye IGV)
+  // Items (JSON serializado)
+  items           String   // [{ descripcion, cantidad, precioUnitario, igv, total }]
+  // Estado SUNAT
+  estado          String   @default("pendiente") // pendiente, enviado, aceptado, rechazado, anulado
+  sunatTicket     String?
+  sunatResponseCode String?
+  sunatDescription String?
+  cdrZipBase64    String?  // CDR firmado por SUNAT (constancia de recepción)
+  xmlFirmado      String?  // XML firmado con certificado digital
+  xmlFileName     String?
+  pdfUrl          String?
+  // Enlace a Stripe / Invoice
+  invoiceId       String?  @unique
+  invoice         Invoice? @relation(fields: [invoiceId], references: [id])
+  subscriptionId  String?
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id])
+  customerTaxInfoId String?
+  customerTaxInfo CustomerTaxInfo? @relation(fields: [customerTaxInfoId], references: [id])
+  // Fechas
+  fechaEmision    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tipoDocumento, serie, correlativo])
+  @@index([customerDocNumber])
+  @@index([estado])
+}
+
+model SunatCorrelativo {
+  id              String   @id @default(cuid())
+  tipoDocumento   String   // "01", "03", "07", "08"
+  serie           String   // F001, B001
+  ultimoCorrelativo Int    @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tipoDocumento, serie])
+}
+
+// ─── Voice Bots ─────────────────────────────────────────────────────────────
+
+model VoiceBot {
+  id          String   @id @default(cuid())
+  name        String
+  provider    String   @default("twilio") // twilio, vonage
+  phoneNumber String?
+  voice       String   @default("Polly.Lucia-Neural")
+  language    String   @default("es-ES")
+  flowId      String?
+  twilioSid   String?
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model VoiceCall {
+  id          String   @id @default(cuid())
+  voiceBotId  String
+  fromNumber  String
+  toNumber    String
+  duration    Int      @default(0)
+  status      String   @default("initiated") // initiated, ringing, answered, completed, failed
+  transcript  String?
+  recordingUrl String?
+  createdAt   DateTime @default(now())
+}
+
+// ─── Multi-tenancy / White Label ────────────────────────────────────────────
+
+model Workspace {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  plan        String   @default("free")
+  branding    String   @default("{}") // logo_url, primary_color, domain
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── Subscription Management: editable plans + payment methods ───────────────
+
+/// Plans overridable from the admin panel. Seeded from PLANS on first run.
+/// Allows the admin to edit price, limits, features and Stripe price IDs
+/// without touching code.
+model PlanOverride {
+  id                  String   @id @default(cuid())
+  planId              String   @unique // "free", "pro", "business", "enterprise"
+  name                String
+  description         String   @default("")
+  /// Price in minor units (cents). For PEN: 4900 = S/ 49.00
+  priceMonthly        Int      @default(0)
+  priceAnnual         Int      @default(0)
+  currency            String   @default("PEN")
+  conversationsLimit  Int      @default(1000)
+  messagesLimit       Int      @default(10000)
+  seats               Int      @default(1)
+  /// JSON array of strings: ["5 bots", "Soporte prioritario"]
+  features            String   @default("[]")
+  /// Stripe Price IDs (subscription mode)
+  stripePriceId         String?
+  stripePriceIdAnnual   String?
+  /// Visibility / ordering
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  isFeatured          Boolean  @default(false)
+  /// Free-form CTA label ("Suscribir", "Contactar ventas", etc.)
+  ctaLabel            String   @default("Suscribir")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+/// Payment methods configurable from the admin panel:
+/// - bank_transfer (BCP, Interbank, BBVA, Scotiabank ...)
+/// - yape (Perú mobile wallet)
+/// - plin (Perú mobile wallet, by Scotiabank/BBVA)
+/// - stripe (credit/debit cards via Stripe)
+model PaymentMethod {
+  id            String   @id @default(cuid())
+  /// "bank_transfer" | "yape" | "plin" | "stripe"
+  type          String
+  /// Display name: "BCP Soles", "Yape MiNegocio", "Tarjeta Crédito/Débito"
+  label         String
+  /// Currency this method accepts: PEN, USD
+  currency      String   @default("PEN")
+  /// Whether this method is offered to customers
+  isActive      Boolean  @default(true)
+  /// JSON config (type-specific). For bank_transfer:
+  ///   { bank, accountNumber, cci, holderName, holderDocType, holderDocNumber, email }
+  /// For yape / plin:
+  ///   { phone, holderName, holderDocType, holderDocNumber, qrImageBase64? }
+  /// For stripe: { publishableKey?, connectedAccountId?, mode: 'test'|'live' }
+  config        String   @default("{}")
+  /// Optional URL to a QR image (for Yape/Plin)
+  qrImageUrl    String?
+  /// Instructions shown to the customer after selecting this method
+  instructions  String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([type, isActive])
+}
+
+/// Manual payment registration (for transfers, Yape, Plin deposits).
+/// The admin matches a customer payment with a pending invoice/subscription.
+model ManualPayment {
+  id              String   @id @default(cuid())
+  /// References the customer's subscription
+  subscriptionId  String?
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  /// Free-form customer identifier (email, doc, phone) when no subscription exists
+  customerId      String?
+  customerName    String?
+  customerEmail   String?
+  /// Which method was used: bank_transfer | yape | plin | cash
+  method          String
+  /// Reference / operation number provided by the customer
+  operationNumber String?
+  /// Amount in minor units of `currency` (e.g. 4900 = S/ 49.00)
+  amount          Int
+  currency        String   @default("PEN")
+  /// Submitted proof (base64 or URL)
+  proofUrl        String?
+  /// Status flow: pending → verified → rejected → refunded
+  status          String   @default("pending")
+  /// Optional Stripe invoice this payment satisfies
+  invoiceId       String?
+  /// Admin notes
+  notes           String?
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([method])
 }

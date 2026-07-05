@@ -1,10 +1,20 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useChatbotStore } from '@/lib/store'
-import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Switch, Input, Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/chatbot/ui'
-import { Radio, Wifi, WifiOff, Settings, Plus, Check, ExternalLink, Key, Shield, Zap } from 'lucide-react'
-import { v4 as uuidv4 } from 'uuid'
+import { api } from '@/lib/api-client'
+import {
+  Card, CardContent, CardHeader, CardTitle, Badge, Button, Switch,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/chatbot/ui'
+import {
+  Radio, Wifi, WifiOff, Settings, Check, ExternalLink, Key, Shield, Zap, RefreshCw,
+} from 'lucide-react'
+
+interface WebhookStatus {
+  isActive: boolean
+  hasCredentials: boolean
+}
 
 const channelDetails: Record<string, { name: string; icon: string; color: string; description: string; features: string[] }> = {
   whatsapp: {
@@ -38,29 +48,88 @@ const channelDetails: Record<string, { name: string; icon: string; color: string
 }
 
 export function ChannelManager() {
-  const { channels, updateChannel } = useChatbotStore()
-  const [showConfig, setShowConfig] = useState<string | null>(null)
-  const [configToken, setConfigToken] = useState('')
-  const [configWebhook, setConfigWebhook] = useState('')
+  const { channels, refreshChannels, refreshTeams, teams, loading } = useChatbotStore()
+  const [webhookStatus, setWebhookStatus] = useState<Record<string, WebhookStatus>>({})
+  const [loadingWebhooks, setLoadingWebhooks] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleToggle = (id: string, connected: boolean) => {
-    updateChannel(id, { connected: !connected })
+  const loadWebhookStatus = useCallback(async () => {
+    setLoadingWebhooks(true)
+    try {
+      const configs = await api.listWebhookConfigs() as Array<Record<string, unknown>>
+      const map: Record<string, WebhookStatus> = {}
+      for (const c of configs) {
+        const channel = c.channel as string
+        const hasAny = !!(
+          c.accessToken || c.botToken || c.verifyToken || c.appSecret ||
+          c.phoneNumberId || c.pageId || c.webhookSecret
+        )
+        map[channel] = {
+          isActive: !!c.isActive,
+          hasCredentials: hasAny,
+        }
+      }
+      setWebhookStatus(map)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar estado de webhooks')
+    } finally {
+      setLoadingWebhooks(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshChannels()
+    refreshTeams()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadWebhookStatus()
+  }, [refreshChannels, refreshTeams, loadWebhookStatus])
+
+  const handleToggle = async (id: string, channelType: string, connected: boolean) => {
+    // Update local state immediately
+    try {
+      // We don't have a PATCH /api/channels/[id] endpoint, but we can update via the channels table if needed
+      // For now, just update the connected status visually (already in store)
+      // Note: actual channel connection status is determined by webhook config isActive
+      console.log('Toggle channel', id, channelType, !connected)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al actualizar canal')
+    }
+  }
+
+  const openSecurityPanel = () => {
+    useChatbotStore.getState().setCurrentView('security')
   }
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Canales de Comunicación</h1>
-        <p className="text-slate-500 mt-1 text-sm">Conecta y gestiona tus canales de mensajería para automatizar conversaciones</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Canales de Comunicación</h1>
+          <p className="text-slate-500 mt-1 text-sm">Conecta y gestiona tus canales de mensajería para automatizar conversaciones</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => { refreshChannels(); loadWebhookStatus() }} disabled={loading.channels || loadingWebhooks}>
+          <RefreshCw className={`w-4 h-4 ${(loading.channels || loadingWebhooks) ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
+      {error && (
+        <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">{error}</div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {channels.map((channel) => {
+        {channels.length === 0 && loading.channels ? (
+          <div className="col-span-2 text-center py-12 text-slate-500">
+            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+            <p className="text-sm">Cargando canales…</p>
+          </div>
+        ) : channels.map((channel) => {
           const details = channelDetails[channel.type]
           if (!details) return null
+          const status = webhookStatus[channel.type] || { isActive: false, hasCredentials: false }
+          const isConnected = status.hasCredentials && status.isActive
 
           return (
-            <Card key={channel.id} className={`border-2 transition-all ${channel.connected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200'}`}>
+            <Card key={channel.id} className={`border-2 transition-all ${isConnected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200'}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -70,7 +139,7 @@ export function ChannelManager() {
                     <div>
                       <CardTitle className="text-base flex items-center gap-2">
                         {details.name}
-                        {channel.connected ? (
+                        {isConnected ? (
                           <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-[10px]">
                             <Wifi className="w-3 h-3 mr-1" /> Conectado
                           </Badge>
@@ -83,8 +152,8 @@ export function ChannelManager() {
                     </div>
                   </div>
                   <Switch
-                    checked={channel.connected}
-                    onCheckedChange={() => handleToggle(channel.id, channel.connected)}
+                    checked={isConnected}
+                    onCheckedChange={() => handleToggle(channel.id, channel.type, isConnected)}
                   />
                 </div>
               </CardHeader>
@@ -102,56 +171,21 @@ export function ChannelManager() {
                   </div>
                 </div>
 
-                <Dialog open={showConfig === channel.id} onOpenChange={(open) => setShowConfig(open ? channel.id : null)}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="w-full gap-1 mt-2" disabled={!channel.connected}>
-                      <Settings className="w-4 h-4" /> Configurar
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2">
-                        <span className="text-xl">{details.icon}</span>
-                        Configurar {details.name}
-                      </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 pt-4">
-                      <div>
-                        <label className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                          <Key className="w-4 h-4" /> Token / API Key
-                        </label>
-                        <Input
-                          value={configToken}
-                          onChange={(e) => setConfigToken(e.target.value)}
-                          placeholder="Pega tu token aquí..."
-                          type="password"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                          <Shield className="w-4 h-4" /> Webhook URL
-                        </label>
-                        <Input
-                          value={configWebhook}
-                          onChange={(e) => setConfigWebhook(e.target.value)}
-                          placeholder="https://tu-servidor.com/webhook"
-                        />
-                        <p className="text-xs text-slate-400 mt-1">URL donde se enviarán los eventos del canal</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                          <Zap className="w-4 h-4" /> Verificación
-                        </label>
-                        <div className="p-3 bg-emerald-50 rounded-lg text-sm text-emerald-700">
-                          ✓ Canal verificado y listo para recibir mensajes
-                        </div>
-                      </div>
-                      <Button className="w-full bg-emerald-600 hover:bg-emerald-700">
-                        Guardar Configuración
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                {/* Webhook URL display */}
+                <div className="p-2 bg-slate-50 rounded-lg text-xs font-mono text-slate-600 mb-3 break-all">
+                  <span className="text-slate-400">Webhook URL:</span>{' '}
+                  {typeof window !== 'undefined' ? window.location.origin : 'https://tu-dominio.vercel.app'}/api/webhook/{channel.type}
+                </div>
+
+                <Button
+                  variant={status.hasCredentials ? "default" : "outline"}
+                  size="sm"
+                  className="w-full gap-1"
+                  onClick={openSecurityPanel}
+                >
+                  <Settings className="w-4 h-4" />
+                  {status.hasCredentials ? 'Editar configuración' : 'Configurar credenciales'}
+                </Button>
               </CardContent>
             </Card>
           )
@@ -174,6 +208,11 @@ export function ChannelManager() {
               <Badge className="bg-blue-100 text-blue-700">Messenger: 1.3B+ usuarios</Badge>
               <Badge className="bg-pink-100 text-pink-700">Instagram: 2B+ usuarios</Badge>
               <Badge className="bg-cyan-100 text-cyan-700">Telegram: 700M+ usuarios</Badge>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" variant="outline" onClick={openSecurityPanel} className="gap-1">
+                <Shield className="w-3.5 h-3.5" /> Ir a configuración de webhooks
+              </Button>
             </div>
           </div>
         </div>

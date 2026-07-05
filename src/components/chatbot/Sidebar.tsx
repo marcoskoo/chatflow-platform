@@ -4,20 +4,72 @@ import React from 'react'
 import {
   MessageSquare, Bot, Settings, Users, Radio,
   LayoutDashboard, Zap, ChevronLeft, X, Code, Shield,
+  Contact as ContactIcon, Megaphone, BarChart3, BookOpen, Plug,
+  FlaskConical, Store, Lock, CreditCard, Phone, Building2, ScrollText, Star,
+  Wallet,
 } from 'lucide-react'
 import { useChatbotStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 
-const navItems = [
-  { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'bots' as const, label: 'Chatbots', icon: Bot },
-  { id: 'builder' as const, label: 'Constructor', icon: Zap },
-  { id: 'conversations' as const, label: 'Conversaciones', icon: MessageSquare },
-  { id: 'channels' as const, label: 'Canales', icon: Radio },
-  { id: 'teams' as const, label: 'Equipos', icon: Users },
-  { id: 'security' as const, label: 'Seguridad', icon: Shield },
-  { id: 'api' as const, label: 'API & IA', icon: Code },
+type View = 'dashboard' | 'bots' | 'builder' | 'conversations' | 'channels' | 'teams'
+  | 'api' | 'security' | 'contacts' | 'broadcasts' | 'analytics' | 'knowledge'
+  | 'integrations' | 'ab-testing' | 'marketplace' | 'gdpr' | 'billing'
+  | 'voice' | 'workspaces' | 'audit' | 'users' | 'subscriptions'
+
+interface NavGroup {
+  label: string
+  items: { id: View; label: string; icon: typeof Bot }[]
+}
+
+const navGroups: NavGroup[] = [
+  {
+    label: 'Operación',
+    items: [
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { id: 'bots', label: 'Chatbots', icon: Bot },
+      { id: 'builder', label: 'Constructor', icon: Zap },
+      { id: 'conversations', label: 'Conversaciones', icon: MessageSquare },
+      { id: 'contacts', label: 'Contactos CRM', icon: ContactIcon },
+      { id: 'broadcasts', label: 'Campañas', icon: Megaphone },
+    ],
+  },
+  {
+    label: 'Crecimiento',
+    items: [
+      { id: 'analytics', label: 'Analítica', icon: BarChart3 },
+      { id: 'ab-testing', label: 'Tests A/B', icon: FlaskConical },
+      { id: 'marketplace', label: 'Plantillas', icon: Store },
+    ],
+  },
+  {
+    label: 'IA y Datos',
+    items: [
+      { id: 'knowledge', label: 'Base de Conoc.', icon: BookOpen },
+      { id: 'integrations', label: 'Integraciones', icon: Plug },
+    ],
+  },
+  {
+    label: 'Canales extra',
+    items: [
+      { id: 'channels', label: 'Canales', icon: Radio },
+      { id: 'voice', label: 'Voice Bots', icon: Phone },
+    ],
+  },
+  {
+    label: 'Administración',
+    items: [
+      { id: 'teams', label: 'Equipos', icon: Users },
+      { id: 'users', label: 'Usuarios y Roles', icon: Users },
+      { id: 'audit', label: 'Audit Logs', icon: ScrollText },
+      { id: 'security', label: 'Seguridad', icon: Shield },
+      { id: 'gdpr', label: 'GDPR', icon: Lock },
+      { id: 'subscriptions', label: 'Suscripciones', icon: Wallet },
+      { id: 'billing', label: 'Facturación', icon: CreditCard },
+      { id: 'workspaces', label: 'Workspaces', icon: Building2 },
+      { id: 'api', label: 'API & IA', icon: Code },
+    ],
+  },
 ]
 
 export function Sidebar() {
@@ -29,6 +81,42 @@ export function Sidebar() {
     setCurrentView(view)
     if (isMobile) setSidebarOpen(false)
   }
+
+  const renderNavGroup = (group: NavGroup, collapsed: boolean) => (
+    <div key={group.label} className="mb-2">
+      {!collapsed && (
+        <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          {group.label}
+        </div>
+      )}
+      {group.items.map((item) => {
+        const Icon = item.icon
+        const isActive = currentView === item.id
+        return (
+          <button
+            key={item.id}
+            onClick={() => handleNav(item.id)}
+            title={collapsed ? item.label : undefined}
+            className={cn(
+              'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all',
+              collapsed && 'justify-center px-0',
+              isActive
+                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            )}
+          >
+            <Icon className="w-5 h-5 flex-shrink-0" />
+            {!collapsed && <span>{item.label}</span>}
+            {!collapsed && item.id === 'conversations' && unreadCount > 0 && (
+              <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
 
   // Mobile: overlay drawer
   if (isMobile) {
@@ -65,31 +153,8 @@ export function Sidebar() {
             </button>
           </div>
 
-          <nav className="flex-1 py-3 space-y-1 px-2">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = currentView === item.id
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleNav(item.id)}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                    isActive
-                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  )}
-                >
-                  <Icon className="w-5 h-5 flex-shrink-0" />
-                  <span>{item.label}</span>
-                  {item.id === 'conversations' && unreadCount > 0 && (
-                    <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                      {unreadCount}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+          <nav className="flex-1 py-3 px-2 overflow-y-auto">
+            {navGroups.map((g) => renderNavGroup(g, false))}
           </nav>
         </aside>
       </>
@@ -115,33 +180,8 @@ export function Sidebar() {
         )}
       </div>
 
-      <nav className="flex-1 py-3 space-y-1 px-2">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive = currentView === item.id
-          return (
-            <button
-              key={item.id}
-              onClick={() => handleNav(item.id)}
-              title={collapsed ? item.label : undefined}
-              className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                collapsed && 'justify-center px-0',
-                isActive
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              )}
-            >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-              {!collapsed && item.id === 'conversations' && unreadCount > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-          )
-        })}
+      <nav className="flex-1 py-3 px-2 overflow-y-auto">
+        {navGroups.map((g) => renderNavGroup(g, collapsed))}
       </nav>
 
       <div className="px-2 pb-4">

@@ -15,3 +15,4 @@ export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 export { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 export { Checkbox } from '@/components/ui/checkbox'
 export { Skeleton } from '@/components/ui/skeleton'
+export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableCaption, TableFooter } from '@/components/ui/table'

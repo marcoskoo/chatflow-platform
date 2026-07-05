@@ -1,16 +1,16 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
-  Card, CardContent, CardHeader, CardTitle, Badge, Button, Input, Switch, Textarea,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Card, CardContent, CardHeader, CardTitle, Badge, Button, Input, Switch,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from '@/components/chatbot/ui'
 import {
   Key, Plus, Trash2, Copy, Check, Shield, Eye, EyeOff, AlertTriangle,
-  Globe, Save, RefreshCw, ExternalLink, Lock, Unlock, Clock, Zap,
+  Globe, Save, RefreshCw, ExternalLink, Lock, Clock, Zap,
 } from 'lucide-react'
-import { v4 as uuidv4 } from 'uuid'
+import { api, getApiKey, setApiKey } from '@/lib/api-client'
 
 interface ApiKeyItem {
   id: string
@@ -78,20 +78,15 @@ const fieldLabels: Record<string, { label: string; placeholder: string; icon: Re
 const permissionOptions = [
   { value: 'read', label: 'Lectura', description: 'Ver datos y listados' },
   { value: 'write', label: 'Escritura', description: 'Crear y modificar datos, usar IA' },
-  { value: 'admin', label: 'Admin', description: 'Gestionar API keys y configuracion' },
+  { value: 'admin', label: 'Admin', description: 'Gestionar API keys y configuración' },
+  { value: 'webhooks', label: 'Webhooks', description: 'Acceso a endpoints de webhook' },
 ]
 
 export function ApiKeyManager() {
-  const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([
-    { id: 'demo-1', name: 'App Principal', permissions: ['read', 'write', 'admin'], isActive: true, lastUsedAt: new Date().toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
-    { id: 'demo-2', name: 'Webhook Service', permissions: ['read', 'webhooks'], isActive: true, lastUsedAt: new Date(Date.now() - 3600000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString() },
-  ])
-  const [webhookConfigs, setWebhookConfigs] = useState<WebhookConfigItem[]>([
-    { id: 'wc-1', channel: 'whatsapp', verifyToken: null, accessToken: null, appSecret: null, phoneNumberId: null, pageId: null, botToken: null, webhookSecret: null, apiVersion: 'v18.0', baseUrl: null, isActive: false },
-    { id: 'wc-2', channel: 'messenger', verifyToken: null, accessToken: null, appSecret: null, phoneNumberId: null, pageId: null, botToken: null, webhookSecret: null, apiVersion: 'v18.0', baseUrl: null, isActive: false },
-    { id: 'wc-3', channel: 'instagram', verifyToken: null, accessToken: null, appSecret: null, phoneNumberId: null, pageId: null, botToken: null, webhookSecret: null, apiVersion: 'v18.0', baseUrl: null, isActive: false },
-    { id: 'wc-4', channel: 'telegram', verifyToken: null, accessToken: null, appSecret: null, phoneNumberId: null, pageId: null, botToken: null, webhookSecret: null, apiVersion: null, baseUrl: null, isActive: false },
-  ])
+  const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([])
+  const [webhookConfigs, setWebhookConfigs] = useState<WebhookConfigItem[]>([])
+  const [loadingKeys, setLoadingKeys] = useState(true)
+  const [loadingWebhooks, setLoadingWebhooks] = useState(true)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
   const [newKeyPerms, setNewKeyPerms] = useState<string[]>(['read', 'write'])
@@ -101,30 +96,92 @@ export function ApiKeyManager() {
   const [webhookForm, setWebhookForm] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
+  const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'localKey' | 'apikeys' | 'webhooks' | 'docs'>('localKey')
 
-  const handleCreateKey = () => {
-    if (!newKeyName.trim()) return
-    const rawKey = `cf_${Array.from({ length: 64 }, () => Math.random().toString(16)[2]).join('')}`
-    const newKey: ApiKeyItem = {
-      id: uuidv4(),
-      name: newKeyName.trim(),
-      permissions: newKeyPerms,
-      isActive: true,
-      lastUsedAt: null,
-      createdAt: new Date().toISOString(),
+  const currentLocalKey = typeof window !== 'undefined' ? getApiKey() : null
+  const [localKeyDraft, setLocalKeyDraft] = useState(currentLocalKey || '')
+
+  const loadKeys = useCallback(async () => {
+    setLoadingKeys(true); setError(null)
+    try {
+      const data = await api.listKeys() as ApiKeyItem[]
+      setApiKeys(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar API keys')
+    } finally {
+      setLoadingKeys(false)
     }
-    setApiKeys([...apiKeys, newKey])
-    setNewlyCreatedKey(rawKey)
-    setNewKeyName('')
-    setNewKeyPerms(['read', 'write'])
+  }, [])
+
+  const loadWebhooks = useCallback(async () => {
+    setLoadingWebhooks(true); setError(null)
+    try {
+      const data = await api.listWebhookConfigs() as WebhookConfigItem[]
+      setWebhookConfigs(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar webhooks')
+    } finally {
+      setLoadingWebhooks(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadKeys()
+    loadWebhooks()
+  }, [loadKeys, loadWebhooks])
+
+  // ─── Local API key (the one the UI is using) ───────────────────────────────
+  const handleSaveLocalKey = () => {
+    setApiKey(localKeyDraft.trim() || null)
+    setError(null)
+    // Reload everything by forcing a reload
+    setTimeout(() => window.location.reload(), 300)
   }
 
-  const handleDeleteKey = (id: string) => {
-    setApiKeys(apiKeys.filter(k => k.id !== id))
+  const handleClearLocalKey = () => {
+    setApiKey(null)
+    setLocalKeyDraft('')
+    setTimeout(() => window.location.reload(), 300)
   }
 
-  const handleToggleKey = (id: string) => {
-    setApiKeys(apiKeys.map(k => k.id === id ? { ...k, isActive: !k.isActive } : k))
+  // ─── API Keys CRUD ──────────────────────────────────────────────────────────
+  const handleCreateKey = async () => {
+    if (!newKeyName.trim()) return
+    setError(null)
+    try {
+      const created = await api.createKey({
+        name: newKeyName.trim(),
+        permissions: newKeyPerms,
+      }) as ApiKeyItem & { key: string }
+      setNewlyCreatedKey(created.key)
+      setNewKeyName('')
+      setNewKeyPerms(['read', 'write'])
+      setShowCreateDialog(false)
+      await loadKeys()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al crear API key')
+    }
+  }
+
+  const handleDeleteKey = async (id: string) => {
+    if (!confirm('¿Eliminar esta API key? Esta acción no se puede deshacer.')) return
+    try {
+      await api.deleteKey(id)
+      await loadKeys()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al eliminar API key')
+    }
+  }
+
+  const handleToggleKey = async (id: string, currentActive: boolean) => {
+    try {
+      await api.updateKey(id, { isActive: !currentActive })
+      await loadKeys()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al actualizar API key')
+    }
   }
 
   const handleCopyKey = (key: string) => {
@@ -133,42 +190,51 @@ export function ApiKeyManager() {
     setTimeout(() => setCopiedKey(false), 2000)
   }
 
+  // ─── Webhook config ────────────────────────────────────────────────────────
   const handleEditWebhook = (channel: string) => {
     const existing = webhookConfigs.find(w => w.channel === channel)
+    const form: Record<string, string> = {}
     if (existing) {
-      const form: Record<string, string> = {}
       for (const field of channelMeta[channel].fields) {
-        const val = existing[field as keyof WebhookConfigItem] as string | null
-        form[field] = val || ''
+        const val = (existing as unknown as Record<string, unknown>)[field] as string | null
+        // For secret fields, leave blank so user must re-enter; for non-secret, prefill
+        if (fieldLabels[field]?.secret) {
+          form[field] = ''
+        } else {
+          form[field] = val || ''
+        }
       }
-      setWebhookForm(form)
-    } else {
-      setWebhookForm({})
     }
+    setWebhookForm(form)
     setEditingChannel(channel)
   }
 
-  const handleSaveWebhook = () => {
+  const handleSaveWebhook = async () => {
     if (!editingChannel) return
-    setSaving(true)
-    // Simulate API call
-    setTimeout(() => {
-      setWebhookConfigs(webhookConfigs.map(w => {
-        if (w.channel === editingChannel) {
-          const updated = { ...w }
-          for (const field of channelMeta[editingChannel].fields) {
-            const val = webhookForm[field]
-            ;(updated as Record<string, unknown>)[field] = val || null
-          }
-          updated.isActive = Object.values(webhookForm).some(v => v.trim() !== '')
-          return updated
+    setSaving(true); setError(null)
+    try {
+      const payload: Record<string, unknown> = { channel: editingChannel }
+      for (const field of channelMeta[editingChannel].fields) {
+        const val = webhookForm[field]
+        // Only include non-empty values; for secret fields, only send if user typed something new
+        if (val && val.trim()) {
+          payload[field] = val.trim()
+        } else if (!fieldLabels[field]?.secret) {
+          // Clear non-secret field if blanked
+          payload[field] = ''
         }
-        return w
-      }))
-      setSaving(false)
+      }
+      payload.isActive = Object.values(webhookForm).some(v => v && v.trim())
+
+      await api.saveWebhookConfig(payload)
+      await loadWebhooks()
       setEditingChannel(null)
       setWebhookForm({})
-    }, 800)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al guardar webhook')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const formatDate = (d: string | null) => {
@@ -195,8 +261,18 @@ export function ApiKeyManager() {
         <p className="text-slate-500 mt-1 text-sm">Gestiona API keys para proteger tus endpoints y configura webhooks reales con cada plataforma</p>
       </div>
 
-      <Tabs defaultValue="apikeys" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-4 sm:mb-6">
+      {error && (
+        <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-rose-700">{error}</p>
+        </div>
+      )}
+
+      <Tabs defaultValue="localKey" className="w-full" onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+        <TabsList className="grid w-full grid-cols-4 mb-4 sm:mb-6">
+          <TabsTrigger value="localKey" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+            <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Mi Key</span>
+          </TabsTrigger>
           <TabsTrigger value="apikeys" className="gap-1 sm:gap-2 text-xs sm:text-sm">
             <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">API Keys</span><span className="sm:hidden">Keys</span>
           </TabsTrigger>
@@ -204,75 +280,114 @@ export function ApiKeyManager() {
             <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Webhooks</span><span className="sm:hidden">Hooks</span>
           </TabsTrigger>
           <TabsTrigger value="docs" className="gap-1 sm:gap-2 text-xs sm:text-sm">
-            <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Documentacion</span><span className="sm:hidden">Docs</span>
+            <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Docs</span>
           </TabsTrigger>
         </TabsList>
 
-        {/* ─── API KEYS TAB ──────────────────────────────────────────────── */}
+        {/* ─── LOCAL API KEY TAB ─────────────────────────────────────────────── */}
+        <TabsContent value="localKey" className="space-y-4">
+          <Card className="border-violet-200 bg-violet-50/50">
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Key className="w-4 h-4 text-violet-500" /> API Key usada por esta interfaz
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-slate-600">
+                Esta es la API key que la UI envía en cada petición a <code className="bg-white px-1 rounded">x-api-key</code>.
+                Se guarda en <code className="bg-white px-1 rounded">localStorage</code> de tu navegador.
+              </p>
+              <Input
+                value={localKeyDraft}
+                onChange={(e) => setLocalKeyDraft(e.target.value)}
+                placeholder="cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                className="font-mono text-xs"
+                type="password"
+              />
+              <div className="flex gap-2">
+                <Button onClick={handleSaveLocalKey} className="bg-emerald-600 hover:bg-emerald-700 gap-2">
+                  <Save className="w-4 h-4" /> Guardar y recargar
+                </Button>
+                <Button onClick={handleClearLocalKey} variant="outline" className="gap-2">
+                  <Trash2 className="w-4 h-4" /> Borrar
+                </Button>
+              </div>
+              {currentLocalKey && (
+                <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-500" />
+                  <span className="text-xs text-emerald-700">API key activa en esta sesión</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ─── API KEYS TAB ──────────────────────────────────────────────────── */}
         <TabsContent value="apikeys" className="space-y-4">
-          {/* Alert banner */}
           <Card className="border-amber-200 bg-amber-50">
             <CardContent className="p-4 flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-semibold text-amber-800">Autenticacion requerida para todos los endpoints</p>
+                <p className="text-sm font-semibold text-amber-800">Autenticación requerida para todos los endpoints</p>
                 <p className="text-xs text-amber-700 mt-1">
                   Todas las rutas API requieren un API key via <code className="bg-amber-100 px-1 rounded">Authorization: Bearer cf_xxx</code> o
-                  <code className="bg-amber-100 px-1 rounded">x-api-key: cf_xxx</code>. Los webhooks entrantes usan verificacion de firma HMAC.
+                  <code className="bg-amber-100 px-1 rounded">x-api-key: cf_xxx</code>. Los webhooks entrantes usan verificación de firma HMAC.
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          {/* Create new key */}
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-semibold text-slate-900">API Keys</h2>
               <p className="text-xs text-slate-500">{apiKeys.length} keys activas</p>
             </div>
-            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-              <DialogTrigger asChild>
-                <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={loadKeys} disabled={loadingKeys}>
+                <RefreshCw className={`w-4 h-4 ${loadingKeys ? 'animate-spin' : ''}`} />
+              </Button>
+              <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+                <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setShowCreateDialog(true)}>
                   <Plus className="w-4 h-4" /> Nueva API Key
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Crear Nueva API Key</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1 block">Nombre</label>
-                    <Input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Ej: Mi Aplicacion Movil" />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 mb-2 block">Permisos</label>
-                    <div className="space-y-2">
-                      {permissionOptions.map(p => (
-                        <label key={p.value} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={newKeyPerms.includes(p.value)}
-                            onChange={(e) => {
-                              if (e.target.checked) setNewKeyPerms([...newKeyPerms, p.value])
-                              else setNewKeyPerms(newKeyPerms.filter(x => x !== p.value))
-                            }}
-                            className="rounded border-slate-300"
-                          />
-                          <div>
-                            <span className="text-sm font-medium">{p.label}</span>
-                            <span className="text-xs text-slate-500 ml-2">({p.description})</span>
-                          </div>
-                        </label>
-                      ))}
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Crear Nueva API Key</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 mb-1 block">Nombre</label>
+                      <Input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Ej: Mi Aplicación Móvil" />
                     </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 mb-2 block">Permisos</label>
+                      <div className="space-y-2">
+                        {permissionOptions.map(p => (
+                          <label key={p.value} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={newKeyPerms.includes(p.value)}
+                              onChange={(e) => {
+                                if (e.target.checked) setNewKeyPerms([...newKeyPerms, p.value])
+                                else setNewKeyPerms(newKeyPerms.filter(x => x !== p.value))
+                              }}
+                              className="rounded border-slate-300"
+                            />
+                            <div>
+                              <span className="text-sm font-medium">{p.label}</span>
+                              <span className="text-xs text-slate-500 ml-2">({p.description})</span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <Button onClick={handleCreateKey} className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={!newKeyName.trim()}>
+                      Generar API Key
+                    </Button>
                   </div>
-                  <Button onClick={handleCreateKey} className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={!newKeyName.trim()}>
-                    Generar API Key
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
 
           {/* Newly created key display */}
@@ -284,8 +399,8 @@ export function ApiKeyManager() {
                     <Key className="w-5 h-5" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-bold text-emerald-800">API Key creada exitosamente!</p>
-                    <p className="text-xs text-emerald-700 mt-1">Guarda esta key de forma segura. No se podra volver a mostrar.</p>
+                    <p className="text-sm font-bold text-emerald-800">¡API Key creada exitosamente!</p>
+                    <p className="text-xs text-emerald-700 mt-1">Guarda esta key de forma segura. No se podrá volver a mostrar.</p>
                     <div className="mt-2 flex items-center gap-2">
                       <code className="flex-1 bg-white px-3 py-2 rounded-lg text-xs font-mono text-slate-800 border border-emerald-200 break-all">
                         {newlyCreatedKey}
@@ -294,9 +409,14 @@ export function ApiKeyManager() {
                         {copiedKey ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                       </Button>
                     </div>
-                    <Button size="sm" variant="ghost" className="mt-2 text-emerald-700" onClick={() => setNewlyCreatedKey(null)}>
-                      Cerrar (la key ya no sera visible)
-                    </Button>
+                    <div className="mt-2 flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => { setApiKey(newlyCreatedKey); setLocalKeyDraft(newlyCreatedKey); setTimeout(() => window.location.reload(), 300); }}>
+                        <Check className="w-4 h-4 mr-1" /> Usar esta key en la UI
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-emerald-700" onClick={() => setNewlyCreatedKey(null)}>
+                        Cerrar
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -305,41 +425,51 @@ export function ApiKeyManager() {
 
           {/* API Keys list */}
           <div className="space-y-2">
-            {apiKeys.map(key => (
-              <Card key={key.id} className={`border ${key.isActive ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl ${key.isActive ? 'bg-violet-100' : 'bg-slate-100'} flex items-center justify-center`}>
-                        <Key className={`w-5 h-5 ${key.isActive ? 'text-violet-500' : 'text-slate-400'}`} />
+            {loadingKeys ? (
+              <Card><CardContent className="p-4 text-center text-sm text-slate-500">
+                <RefreshCw className="w-4 h-4 animate-spin inline mr-2" /> Cargando API keys…
+              </CardContent></Card>
+            ) : apiKeys.length === 0 ? (
+              <Card><CardContent className="p-4 text-center text-sm text-slate-500">
+                No hay API keys. Crea la primera con el botón de arriba.
+              </CardContent></Card>
+            ) : (
+              apiKeys.map(key => (
+                <Card key={key.id} className={`border ${key.isActive ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl ${key.isActive ? 'bg-violet-100' : 'bg-slate-100'} flex items-center justify-center`}>
+                          <Key className={`w-5 h-5 ${key.isActive ? 'text-violet-500' : 'text-slate-400'}`} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm text-slate-900">{key.name}</span>
+                            <Badge className={`text-[9px] ${key.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                              {key.isActive ? 'Activa' : 'Inactiva'}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            {key.permissions.map(p => (
+                              <Badge key={p} className={`text-[9px] ${permColor(p)}`}>{p}</Badge>
+                            ))}
+                            <span className="text-[10px] text-slate-400 ml-2 flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> Último uso: {formatDate(key.lastUsedAt)}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm text-slate-900">{key.name}</span>
-                          <Badge className={`text-[9px] ${key.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                            {key.isActive ? 'Activa' : 'Inactiva'}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          {key.permissions.map(p => (
-                            <Badge key={p} className={`text-[9px] ${permColor(p)}`}>{p}</Badge>
-                          ))}
-                          <span className="text-[10px] text-slate-400 ml-2 flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> Ultimo uso: {formatDate(key.lastUsedAt)}
-                          </span>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <Switch checked={key.isActive} onCheckedChange={() => handleToggleKey(key.id, key.isActive)} />
+                        <Button size="sm" variant="ghost" className="text-rose-500 hover:text-rose-700 hover:bg-rose-50" onClick={() => handleDeleteKey(key.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Switch checked={key.isActive} onCheckedChange={() => handleToggleKey(key.id)} />
-                      <Button size="sm" variant="ghost" className="text-rose-500 hover:text-rose-700 hover:bg-rose-50" onClick={() => handleDeleteKey(key.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
 
           {/* Usage example */}
@@ -350,11 +480,11 @@ export function ApiKeyManager() {
             <CardContent>
               <pre className="bg-slate-900 text-emerald-400 p-3 rounded-lg text-xs overflow-x-auto">
 {`# Usando Bearer Token
-curl -X GET http://localhost:3000/api/bots \\
+curl -X GET https://tu-dominio.vercel.app/api/bots \\
   -H "Authorization: Bearer cf_tu_api_key_aqui"
 
 # Usando x-api-key header
-curl -X POST http://localhost:3000/api/ai/chat \\
+curl -X POST https://tu-dominio.vercel.app/api/ai/chat \\
   -H "x-api-key: cf_tu_api_key_aqui" \\
   -H "Content-Type: application/json" \\
   -d '{"message": "Hola", "botName": "Asistente"}'`}
@@ -363,7 +493,7 @@ curl -X POST http://localhost:3000/api/ai/chat \\
           </Card>
         </TabsContent>
 
-        {/* ─── WEBHOOKS TAB ──────────────────────────────────────────────── */}
+        {/* ─── WEBHOOKS TAB ──────────────────────────────────────────────────── */}
         <TabsContent value="webhooks" className="space-y-4">
           <Card className="border-blue-200 bg-blue-50">
             <CardContent className="p-4 flex items-start gap-3">
@@ -372,17 +502,24 @@ curl -X POST http://localhost:3000/api/ai/chat \\
                 <p className="text-sm font-semibold text-blue-800">Webhooks con APIs reales de cada plataforma</p>
                 <p className="text-xs text-blue-700 mt-1">
                   Configura las credenciales de cada plataforma para recibir y enviar mensajes reales.
-                  Los webhooks entrantes verifican firmas HMAC automaticamente.
+                  Los webhooks entrantes verifican firmas HMAC automáticamente.
                 </p>
               </div>
             </CardContent>
           </Card>
 
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-slate-900">Configuración por canal</h2>
+            <Button variant="outline" size="sm" onClick={loadWebhooks} disabled={loadingWebhooks}>
+              <RefreshCw className={`w-4 h-4 ${loadingWebhooks ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {webhookConfigs.map(config => {
               const meta = channelMeta[config.channel]
+              if (!meta) return null
               const isConfigured = config.isActive
-              const isEditing = editingChannel === config.channel
 
               return (
                 <Card key={config.id} className={`border-2 transition-all ${isConfigured ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200'}`}>
@@ -405,12 +542,13 @@ curl -X POST http://localhost:3000/api/ai/chat \\
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    <div className="p-2 bg-slate-50 rounded-lg text-xs font-mono text-slate-600 mb-3">
-                      <span className="text-slate-400">Webhook URL:</span> /api/webhook/{config.channel}
+                    <div className="p-2 bg-slate-50 rounded-lg text-xs font-mono text-slate-600 mb-3 break-all">
+                      <span className="text-slate-400">Webhook URL:</span>{' '}
+                      {typeof window !== 'undefined' ? window.location.origin : 'https://tu-dominio.vercel.app'}/api/webhook/{config.channel}
                     </div>
                     {isConfigured && (
                       <div className="space-y-1">
-                        {meta.fields.filter(f => (config as Record<string, unknown>)[f]).map(f => (
+                        {meta.fields.filter(f => (config as unknown as Record<string, unknown>)[f]).map(f => (
                           <div key={f} className="flex items-center gap-2 text-xs">
                             <Check className="w-3 h-3 text-emerald-500" />
                             <span className="text-slate-600">{fieldLabels[f]?.label || f}</span>
@@ -443,6 +581,7 @@ curl -X POST http://localhost:3000/api/ai/chat \\
                     <div key={field}>
                       <label className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
                         {meta.icon} {meta.label}
+                        {isSecret && <span className="text-[10px] text-slate-400">(escribe nuevo valor para reemplazar)</span>}
                       </label>
                       <div className="relative">
                         <Input
@@ -468,21 +607,21 @@ curl -X POST http://localhost:3000/api/ai/chat \\
                 {/* Webhook URL info */}
                 <div className="p-3 bg-slate-50 rounded-lg">
                   <p className="text-xs font-semibold text-slate-600 mb-1">URL del Webhook para configurar en la plataforma:</p>
-                  <code className="text-xs bg-white px-2 py-1 rounded border text-emerald-600 font-mono">
-                    https://tu-servidor.com/api/webhook/{editingChannel}
+                  <code className="text-xs bg-white px-2 py-1 rounded border text-emerald-600 font-mono break-all">
+                    {typeof window !== 'undefined' ? window.location.origin : 'https://tu-dominio.vercel.app'}/api/webhook/{editingChannel}
                   </code>
                   {editingChannel === 'telegram' && (
                     <p className="text-[10px] text-slate-500 mt-2">
                       Para Telegram, configura el webhook ejecutando:
-                      <code className="block bg-white px-2 py-1 rounded border text-xs mt-1">
-                        https://api.telegram.org/bot{'<TOKEN>'}/setWebhook?url=https://tu-servidor.com/api/webhook/telegram
+                      <code className="block bg-white px-2 py-1 rounded border text-xs mt-1 break-all">
+                        https://api.telegram.org/bot{'<TOKEN>'}/setWebhook?url={typeof window !== 'undefined' ? window.location.origin : 'https://tu-dominio.vercel.app'}/api/webhook/telegram
                       </code>
                     </p>
                   )}
                   {(editingChannel === 'whatsapp' || editingChannel === 'messenger' || editingChannel === 'instagram') && (
                     <p className="text-[10px] text-slate-500 mt-2">
                       En Meta Developers, configura esta URL como webhook y usa el Verify Token que definiste arriba.
-                      Suscribete a los eventos: messages, messaging_postbacks.
+                      Suscríbete a los eventos: <code>messages</code>, <code>messaging_postbacks</code>.
                     </p>
                   )}
                 </div>
@@ -490,7 +629,7 @@ curl -X POST http://localhost:3000/api/ai/chat \\
                 <div className="flex gap-2">
                   <Button onClick={handleSaveWebhook} className="flex-1 bg-emerald-600 hover:bg-emerald-700" disabled={saving}>
                     {saving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                    {saving ? 'Guardando...' : 'Guardar Configuracion'}
+                    {saving ? 'Guardando...' : 'Guardar Configuración'}
                   </Button>
                   <Button variant="outline" onClick={() => setEditingChannel(null)}>Cancelar</Button>
                 </div>
@@ -499,20 +638,20 @@ curl -X POST http://localhost:3000/api/ai/chat \\
           </Dialog>
         </TabsContent>
 
-        {/* ─── DOCS TAB ──────────────────────────────────────────────────── */}
+        {/* ─── DOCS TAB ──────────────────────────────────────────────────────── */}
         <TabsContent value="docs" className="space-y-4">
           <Card className="border-slate-200">
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <Shield className="w-4 h-4 text-violet-500" /> Sistema de Autenticacion
+                <Shield className="w-4 h-4 text-violet-500" /> Sistema de Autenticación
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="p-3 bg-violet-50 rounded-lg border border-violet-100">
-                <p className="text-xs font-semibold text-violet-800 mb-1">Como funciona</p>
+                <p className="text-xs font-semibold text-violet-800 mb-1">Cómo funciona</p>
                 <ul className="text-xs text-violet-700 space-y-1 list-disc pl-4">
                   <li>Las API keys se generan con un hash SHA-256 y se almacenan de forma segura</li>
-                  <li>Se envian via <code className="bg-violet-100 px-1 rounded">Authorization: Bearer</code> o <code className="bg-violet-100 px-1 rounded">x-api-key</code></li>
+                  <li>Se envían via <code className="bg-violet-100 px-1 rounded">Authorization: Bearer</code> o <code className="bg-violet-100 px-1 rounded">x-api-key</code></li>
                   <li>Cada key tiene permisos: read (GET), write (POST/PATCH), admin (DELETE/keys)</li>
                   <li>Los webhooks entrantes NO requieren API key - se validan con firma HMAC</li>
                 </ul>
@@ -523,7 +662,7 @@ curl -X POST http://localhost:3000/api/ai/chat \\
                   <p><Badge className="text-[9px] bg-emerald-100 text-emerald-700">read</Badge> GET /api/bots, conversations, channels, teams, messages</p>
                   <p><Badge className="text-[9px] bg-blue-100 text-blue-700">write</Badge> POST/PATCH bots, conversations, messages, tags, notes, transfer, ai/chat, send/*</p>
                   <p><Badge className="text-[9px] bg-red-100 text-red-700">admin</Badge> DELETE bots, api/keys/*, webhook-config/*</p>
-                  <p><Badge className="text-[9px] bg-cyan-100 text-cyan-700">sin auth</Badge> POST /api/webhook/* (firma HMAC verificada), GET /api (info publica)</p>
+                  <p><Badge className="text-[9px] bg-cyan-100 text-cyan-700">sin auth</Badge> POST /api/webhook/* (firma HMAC verificada), GET /api (info pública), POST /api/setup</p>
                 </div>
               </div>
             </CardContent>
@@ -540,15 +679,15 @@ curl -X POST http://localhost:3000/api/ai/chat \\
                 <div className="p-3 bg-green-50 rounded-lg border border-green-100">
                   <p className="text-xs font-semibold text-green-800">WhatsApp / Meta</p>
                   <p className="text-[10px] text-green-700 mt-1">
-                    Verificacion via <code className="bg-green-100 px-1 rounded">hub.challenge</code> con verify_token.
+                    Verificación via <code className="bg-green-100 px-1 rounded">hub.challenge</code> con verify_token.
                     Firma HMAC-SHA1 en header <code className="bg-green-100 px-1 rounded">X-Hub-Signature-256</code> verificada con App Secret.
                   </p>
                 </div>
                 <div className="p-3 bg-cyan-50 rounded-lg border border-cyan-100">
                   <p className="text-xs font-semibold text-cyan-800">Telegram</p>
                   <p className="text-[10px] text-cyan-700 mt-1">
-                    Verificacion via <code className="bg-cyan-100 px-1 rounded">secret_token</code> header configurado con setWebhook.
-                    Firma HMAC-SHA256 del bot token validada automaticamente.
+                    Verificación via <code className="bg-cyan-100 px-1 rounded">secret_token</code> header configurado con setWebhook.
+                    Firma HMAC-SHA256 del bot token validada automáticamente.
                   </p>
                 </div>
               </div>
@@ -569,7 +708,7 @@ curl -X POST /api/send/whatsapp \\
   -H "Content-Type: application/json" \\
   -d '{
     "recipientId": "+521234567890",
-    "message": "Selecciona una opcion:",
+    "message": "Selecciona una opción:",
     "buttons": [
       { "id": "b1", "text": "Mi pedido" },
       { "id": "b2", "text": "Pagos" },
@@ -583,7 +722,7 @@ curl -X POST /api/send/telegram \\
   -H "Authorization: Bearer cf_tu_api_key" \\
   -d '{
     "recipientId": "123456789",
-    "message": "Hola! Como puedo ayudarte?",
+    "message": "Hola! Cómo puedo ayudarte?",
     "buttons": [{ "id": "help", "text": "Ayuda" }]
   }'`}
               </pre>

@@ -30,14 +30,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (only commit the example template)
 .env*
 !.env.example
 
 # vercel
 .vercel
 
-# database
+# database (local SQLite leftovers from earlier dev)
 /db/
 *.db
 *.db-journal
@@ -53,19 +53,22 @@ dev.log
 dev.out.log
 test
 prompt
-
 server.log
-# Skills directory
+
+# Local-only / non-shippable directories
 /skills/
-# Download
 /download/
-# Examples
 /examples/
-# Tool results
 /tool-results/
-# Worklog
+/mini-services/
+/.zscripts/
+/upload/
+
+# Worklog (internal agent log)
 worklog.md
-# Caddyfile (local dev only)
+
+# Local reverse proxy config
 Caddyfile
+
 # Research files
-research_*.jsonscripts/setup-database.sh
+research_*.json

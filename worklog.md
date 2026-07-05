@@ -113,3 +113,79 @@ Stage Summary:
 - Admin API Key: cf_4e20bd86a582d7f8f74180cba4419d64b90e00fab1a2b8f4c9b1bfcf288598a3
 - Production URL: https://my-project-three-mocha-71.vercel.app
 - Neon Project: bold-frost-19977449 (iad1 region, free tier 0.5GB)
+
+---
+Task ID: e2e-docs-stripe-sunat
+Agent: Main Agent
+Task: Añadir pruebas E2E, documentación OpenAPI/Swagger y conectar Stripe real para facturación SUNAT
+
+Work Log:
+- Instaladas dependencias: stripe, @scalar/api-reference-react, @playwright/test, openapi-types
+- Extendido prisma/schema.prisma: Subscription (con stripeCustomerId, stripePriceId, cancelAtPeriodEnd), Invoice (con hostedInvoiceUrl), nuevos modelos CustomerTaxInfo, SunatDocument, SunatCorrelativo
+- Creado src/lib/stripe.ts: cliente Stripe singleton, catálogo de planes (free/pro/business/enterprise), helper para construir Eventos de webhook
+- Creado src/lib/sunat.ts: módulo de facturación electrónica SUNAT (Perú) con generación XML UBL 2.1, cálculo de IGV 18%, catálogos (tipos de documento, tipos de afectación), función submitToSunat (envío a servicio externo o modo simulación)
+- Creadas rutas API Stripe:
+  * POST /api/stripe/webhook — recibe y verifica firma, maneja checkout.session.completed, customer.subscription.updated/deleted, invoice.payment_succeeded/failed
+  * POST /api/stripe/checkout — crea sesión de Checkout
+  * POST /api/stripe/portal — crea sesión de Customer Portal
+  * GET /api/stripe/plans — catálogo público de planes
+  * GET /api/billing/me — resumen agregado de suscripción+facturas+SUNAT
+- Creadas rutas API SUNAT:
+  * GET /api/sunat/issuer — datos del emisor
+  * GET /api/sunat/correlativos — contador de correlativos
+  * GET/POST /api/sunat/customer-info — datos fiscales del cliente (RUC/DNI)
+  * GET/POST /api/sunat/documents — listado y creación de comprobantes
+  * GET/POST/DELETE /api/sunat/documents/[id] — gestión individual
+  * GET /api/sunat/documents/[id]/xml — descarga XML firmado
+  * GET /api/sunat/documents/[id]/pdf — HTML imprimible (formato SUNAT)
+- Creada spec OpenAPI 3.1 completa en src/lib/openapi-spec.ts (~470 líneas) con todos los endpoints, esquemas (Bot, Conversation, Contact, Subscription, Invoice, CustomerTaxInfo, SunatDocument, SunatItem, CheckoutRequest), ejemplos y descripciones en español
+- Creadas páginas /docs (Scalar API Reference en React) y /api/docs/json (JSON spec)
+- Actualizado BillingPanel en src/components/chatbot/FeaturePanels.tsx con integración Stripe (checkout, portal) + SUNAT (datos fiscales, listado de comprobantes, descarga XML/PDF)
+- Creadas pruebas E2E con Playwright (tests/e2e/):
+  * public.spec.ts (5 tests) — endpoints públicos + aplicación de auth
+  * stripe.spec.ts (11 tests) — planes, checkout, portal, webhook
+  * sunat.spec.ts (10 tests) — ciclo completo SUNAT (datos fiscales, crear Factura/Boleta, XML, PDF, listado)
+  * api-core.spec.ts (7 tests) — Bots, Contacts, Conversations, Subscriptions, Invoices
+  * ui-smoke.spec.ts (4 tests) — home page, sidebar, docs page
+- Configuración Playwright en playwright.config.ts con auto-start del dev server
+- Actualizado .env.example con variables Stripe + SUNAT + ADMIN_API_KEY
+- Actualizado package.json con scripts: test:e2e, test:e2e:ui, test:e2e:report, stripe:listen
+- Actualizado README con sección "Documentación de la API (OpenAPI)", "Facturación Stripe + SUNAT" y "Pruebas E2E"
+- Verificado: TypeScript compila limpio (npx tsc --noEmit), build de producción exitoso (npx next build), 12/12 tests E2E ejecutables pasan (los otros 25 se skippean por requerir ADMIN_API_KEY + DB)
+
+Stage Summary:
+- Documentación OpenAPI 3.1 disponible en /docs (Scalar UI) y /api/docs/json (JSON)
+- Stripe integrado de extremo a extremo: checkout → webhook → auto-generación de comprobante SUNAT
+- SUNAT: XML UBL 2.1 + HTML imprimible + auto-detección Factura/Boleta según RUC/DNI
+- 37 tests E2E creados (12 pasan en env sin DB, 25 se skippean)
+- Sin requerir DB local para que la app arranque (Stripe/SUNAT son opcionales vía env vars)
+- Para producción: configurar STRIPE_SECRET_KEY, STRIPE_PRICE_*, SUNAT_ISSUER_* y SUNAT_SENDER_URL
+
+---
+Task ID: manual-and-stripe-only
+Agent: Main Agent
+Task: Configurar pasos 1, 3, 4, 5 (E2E, OpenAPI, Stripe sin SUNAT, Manual) y entregar manual replicable
+
+Work Log:
+- Verificado que el código compila limpio (npx tsc --noEmit sin errores)
+- Verificado que los tests E2E públicos pasan: 5/5 public.spec.ts, 3/3 stripe.spec.ts (planes+webhook), 4/4 ui-smoke.spec.ts
+- Ajustado src/app/api/stripe/webhook/route.ts: la generación automática de comprobantes SUNAT ahora está gateada por SUNAT_ENABLED=1. Sin esa variable, Stripe funciona end-to-end sin SUNAT (subscriptions, invoices, portal operan normalmente).
+- Actualizado .env.example con la nueva variable SUNAT_ENABLED documentada
+- Creado scripts/setup-stripe.ts — script idempotente que crea (o reutiliza) 2 productos + 4 precios en Stripe vía API, e imprime los price_xxx para copiar al .env. Con --write los escribe directamente
+- Creado scripts/send-test-event.ts — dispara eventos de Stripe firmados localmente para probar el webhook sin CLI
+- Creado scripts/build-cover-html.js + scripts/manual-cover.html — portada HTML (Template 01 HUD) para el manual
+- Renderizado scripts/manual-cover.pdf con html2poster.js (794×1123px, 195.6 KB)
+- Creado scripts/build-manual-body.py — script ReportLab con TocDocTemplate, 5 capítulos + 2 apéndices
+- Generado scripts/manual-body.pdf (179.5 KB)
+- Creado scripts/merge-manual.py — combina cover + body con pypdf y añade metadata
+- Generado download/Manual-Configuracion-ChatFlow.pdf (24 páginas, 379.2 KB)
+- PDF QA: 10 checks pasados, 1 warning cosmético (cover 0.6pt más grande que body, invisible)
+- Actualizado README.md: sección "Manual de configuración (PDF)" con enlace al manual, reorganizada la sección de Stripe/SUNAT para reflejar que SUNAT está opcional
+
+Stage Summary:
+- Stripe funciona end-to-end sin SUNAT (gateado por SUNAT_ENABLED)
+- Script setup-stripe.ts automatiza la creación de productos/precios en Stripe
+- Manual PDF de 24 páginas entregado en /home/z/my-project/download/Manual-Configuracion-ChatFlow.pdf
+- Manual cubre: E2E con Playwright, OpenAPI+Scalar, Stripe real, verificación, apéndices
+- 12/12 tests E2E públicos pasan (sin requerir DB ni API key)
+- TypeScript compila limpio

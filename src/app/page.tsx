@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useChatbotStore } from '@/lib/store'
 import { Sidebar } from '@/components/chatbot/Sidebar'
 import { Dashboard } from '@/components/chatbot/Dashboard'
@@ -11,12 +11,32 @@ import { ChannelManager } from '@/components/chatbot/ChannelManager'
 import { TeamManager } from '@/components/chatbot/TeamManager'
 import { ApiDocs } from '@/components/chatbot/ApiDocs'
 import { ApiKeyManager } from '@/components/chatbot/ApiKeyManager'
-import { Menu } from 'lucide-react'
+import { BootstrapGate } from '@/components/chatbot/BootstrapGate'
+import {
+  ContactsPanel, BroadcastsPanel, AnalyticsPanel, KnowledgePanel,
+  IntegrationsPanel, ABTestingPanel, MarketplacePanel, GDPRPanel,
+  BillingPanel, VoicePanel, WorkspacesPanel, AuditPanel, UsersPanel,
+} from '@/components/chatbot/FeaturePanels'
+import { SubscriptionPanel } from '@/components/chatbot/SubscriptionPanel'
+import { Menu, Zap } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 export default function Home() {
-  const { currentView, setSidebarOpen } = useChatbotStore()
+  return (
+    <BootstrapGate>
+      <AppShell />
+    </BootstrapGate>
+  )
+}
+
+function AppShell() {
+  const { currentView, setSidebarOpen, apiKey, refreshAll } = useChatbotStore()
   const isMobile = useIsMobile()
+
+  // Whenever the API key changes (or on first load after setup), refresh all data
+  useEffect(() => {
+    if (apiKey) refreshAll()
+  }, [apiKey, refreshAll])
 
   const renderView = () => {
     switch (currentView) {
@@ -36,6 +56,35 @@ export default function Home() {
         return <ApiKeyManager />
       case 'api':
         return <ApiDocs />
+      // New views
+      case 'contacts':
+        return <ContactsPanel />
+      case 'broadcasts':
+        return <BroadcastsPanel />
+      case 'analytics':
+        return <AnalyticsPanel />
+      case 'knowledge':
+        return <KnowledgePanel />
+      case 'integrations':
+        return <IntegrationsPanel />
+      case 'ab-testing':
+        return <ABTestingPanel />
+      case 'marketplace':
+        return <MarketplacePanel />
+      case 'gdpr':
+        return <GDPRPanel />
+      case 'billing':
+        return <BillingPanel />
+      case 'subscriptions':
+        return <SubscriptionPanel />
+      case 'voice':
+        return <VoicePanel />
+      case 'workspaces':
+        return <WorkspacesPanel />
+      case 'audit':
+        return <AuditPanel />
+      case 'users':
+        return <UsersPanel />
       default:
         return <Dashboard />
     }
@@ -57,7 +106,7 @@ export default function Home() {
             </button>
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center">
-                <span className="text-white text-xs font-bold">CF</span>
+                <Zap className="w-4 h-4 text-white" />
               </div>
               <span className="font-bold text-sm text-slate-900">ChatFlow</span>
             </div>

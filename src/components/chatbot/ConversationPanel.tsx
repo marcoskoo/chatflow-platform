@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useChatbotStore, type Message } from '@/lib/store'
+import { api } from '@/lib/api-client'
 import { Button, Input, Badge, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/chatbot/ui'
 import {
   Tag as TagIcon, StickyNote, UserPlus, Send, Bot, User, HeadphonesIcon,
-  Plus, X, Sparkles, Brain, Zap, Code, Copy, Check, ArrowLeft,
+  Plus, X, Sparkles, Brain, Zap, Code, Copy, Check, ArrowLeft, RefreshCw,
 } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -17,6 +18,7 @@ export function ConversationPanel() {
   const {
     conversations, selectedConversationId, selectConversation,
     addMessage, addTag, removeTag, addNote, transferConversation, teams,
+    refreshConversations, loading,
   } = useChatbotStore()
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -33,10 +35,15 @@ export function ConversationPanel() {
   const [transferAgentId, setTransferAgentId] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
+  const [actionLoading, setActionLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
 
   const isMobile = useIsMobile()
   const [showConvList, setShowConvList] = useState(true)
+
+  // Initial load
+  useEffect(() => { refreshConversations() }, [refreshConversations])
 
   const selectedConv = conversations.find(c => c.id === selectedConversationId)
 
@@ -51,19 +58,42 @@ export function ConversationPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [selectedConv?.messages?.length])
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!messageInput.trim() || !selectedConv) return
-    const msg: Message = {
-      id: uuidv4(),
+    const content = messageInput.trim()
+    setMessageInput('')
+    setError(null)
+    // Optimistic update
+    const tempId = uuidv4()
+    const optimistic: Message = {
+      id: tempId,
       conversationId: selectedConv.id,
       sender: 'agent',
-      content: messageInput.trim(),
+      content,
       type: 'text',
       isBot: false,
       createdAt: new Date().toISOString(),
     }
-    addMessage(selectedConv.id, msg)
-    setMessageInput('')
+    addMessage(selectedConv.id, optimistic)
+    try {
+      const created = await api.sendMessage(selectedConv.id, {
+        sender: 'agent',
+        content,
+        type: 'text',
+        isBot: false,
+      }) as Message
+      // Replace optimistic message with server one
+      removeMessageFromState(tempId)
+      addMessage(selectedConv.id, created)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al enviar mensaje')
+      removeMessageFromState(tempId)
+    }
+  }
+
+  const removeMessageFromState = (id: string) => {
+    // Quick hack: reload conversations to drop optimistic entry
+    refreshConversations()
   }
 
   // GLM AI Response
@@ -71,33 +101,39 @@ export function ConversationPanel() {
     if (!selectedConv || aiLoading) return
     setAiLoading(true)
     setAiSuggestions([])
+    setError(null)
 
     try {
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: selectedConv.messages.filter(m => m.sender === 'user').slice(-1)[0]?.content || '',
-          conversationHistory: selectedConv.messages.slice(-10),
-          botName: 'ChatFlow Assistant',
-          channel: selectedConv.channel,
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        const aiMsg: Message = {
-          id: uuidv4(),
-          conversationId: selectedConv.id,
+      const data = await api.aiChat({
+        message: selectedConv.messages.filter(m => m.sender === 'user').slice(-1)[0]?.content || '',
+        conversationHistory: selectedConv.messages.slice(-10),
+        botName: 'ChatFlow Assistant',
+        channel: selectedConv.channel,
+      }) as { response: string }
+      const aiMsg: Message = {
+        id: uuidv4(),
+        conversationId: selectedConv.id,
+        sender: 'bot',
+        content: data.response,
+        type: 'text',
+        isBot: true,
+        createdAt: new Date().toISOString(),
+      }
+      // Save the AI message to DB too so it persists
+      try {
+        const saved = await api.sendMessage(selectedConv.id, {
           sender: 'bot',
-          content: data.data.response,
+          content: data.response,
           type: 'text',
           isBot: true,
-          createdAt: new Date().toISOString(),
-        }
+        }) as Message
+        addMessage(selectedConv.id, saved)
+      } catch {
+        // If saving fails, still show locally
         addMessage(selectedConv.id, aiMsg)
       }
     } catch (err) {
-      console.error('AI Error:', err)
+      setError(err instanceof Error ? err.message : 'Error al generar respuesta IA')
     } finally {
       setAiLoading(false)
     }
@@ -107,59 +143,67 @@ export function ConversationPanel() {
   const handleAiSuggestions = async () => {
     if (!selectedConv || aiLoading) return
     setAiLoading(true)
+    setError(null)
     try {
-      const res = await fetch('/api/ai/suggest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: selectedConv.messages.filter(m => m.sender === 'user').slice(-1)[0]?.content || '',
-          context: `Conversación con ${selectedConv.contactName} en ${selectedConv.channel}`,
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setAiSuggestions(data.data.suggestions)
-      }
+      const data = await api.aiSuggest({
+        message: selectedConv.messages.filter(m => m.sender === 'user').slice(-1)[0]?.content || '',
+        context: `Conversación con ${selectedConv.contactName} en ${selectedConv.channel}`,
+      }) as { suggestions: string[] }
+      setAiSuggestions(data.suggestions || [])
     } catch (err) {
-      console.error('Suggest Error:', err)
+      setError(err instanceof Error ? err.message : 'Error al generar sugerencias')
     } finally {
       setAiLoading(false)
     }
   }
 
-  const handleAddTag = () => {
+  const handleAddTag = async () => {
     if (!newTagName.trim() || !selectedConv) return
-    const tag = { id: uuidv4(), name: newTagName.trim(), color: newTagColor, conversationId: selectedConv.id }
-    addTag(selectedConv.id, tag)
-    setNewTagName('')
-    setShowTagDialog(false)
-  }
-
-  const handleAddNote = () => {
-    if (!newNoteContent.trim() || !selectedConv) return
-    const note = { id: uuidv4(), content: newNoteContent.trim(), author: 'Agente', createdAt: new Date().toISOString() }
-    addNote(selectedConv.id, note)
-    setNewNoteContent('')
-    setShowNoteDialog(false)
-  }
-
-  const handleTransfer = () => {
-    if (!transferTeamId || !selectedConv) return
-    const team = teams.find(t => t.id === transferTeamId)
-    transferConversation(selectedConv.id, team?.name || '', transferAgentId || undefined)
-    const transferMsg: Message = {
-      id: uuidv4(),
-      conversationId: selectedConv.id,
-      sender: 'bot',
-      content: `Conversación transferida al equipo ${team?.name}${transferAgentId ? ` - Agente: ${transferAgentId}` : ''}. Un momento por favor...`,
-      type: 'transfer',
-      isBot: true,
-      createdAt: new Date().toISOString(),
+    setError(null); setActionLoading(true)
+    try {
+      const tag = await api.addTag(selectedConv.id, { name: newTagName.trim(), color: newTagColor }) as { id: string; name: string; color: string; conversationId: string }
+      addTag(selectedConv.id, tag)
+      setNewTagName('')
+      setShowTagDialog(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al agregar etiqueta')
+    } finally {
+      setActionLoading(false)
     }
-    addMessage(selectedConv.id, transferMsg)
-    setShowTransferDialog(false)
-    setTransferTeamId('')
-    setTransferAgentId('')
+  }
+
+  const handleAddNote = async () => {
+    if (!newNoteContent.trim() || !selectedConv) return
+    setError(null); setActionLoading(true)
+    try {
+      const note = await api.addNote(selectedConv.id, { content: newNoteContent.trim(), author: 'Agente' }) as { id: string; content: string; author?: string; createdAt: string }
+      addNote(selectedConv.id, note)
+      setNewNoteContent('')
+      setShowNoteDialog(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al agregar nota')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleTransfer = async () => {
+    if (!transferTeamId || !selectedConv) return
+    setError(null); setActionLoading(true)
+    const team = teams.find(t => t.id === transferTeamId)
+    try {
+      await api.transfer(selectedConv.id, { team: team?.name || transferTeamId, assignedTo: transferAgentId || undefined })
+      transferConversation(selectedConv.id, team?.name || transferTeamId, transferAgentId || undefined)
+      // The transfer endpoint also inserts a system message, refresh to pick it up
+      await refreshConversations()
+      setShowTransferDialog(false)
+      setTransferTeamId('')
+      setTransferAgentId('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al transferir conversación')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   const channelIcon = (ch: string) => ch === 'whatsapp' ? '💬' : ch === 'messenger' ? '💬' : ch === 'instagram' ? '📸' : '✈️'
@@ -168,6 +212,7 @@ export function ConversationPanel() {
 
   // On mobile: when selecting a conversation, show chat; when deselecting, show list
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isMobile && selectedConversationId) setShowConvList(false)
     if (isMobile && !selectedConversationId) setShowConvList(true)
   }, [isMobile, selectedConversationId])
@@ -189,8 +234,26 @@ export function ConversationPanel() {
         <div className="p-3 border-b border-slate-200 space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-base text-slate-900">Conversaciones</h2>
-            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{conversations.length}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{conversations.length}</Badge>
+              <button
+                onClick={() => refreshConversations()}
+                disabled={loading.conversations}
+                className="p-1 rounded hover:bg-slate-100 text-slate-500 disabled:opacity-50"
+                title="Recargar"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading.conversations ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
+          {error && (
+            <div className="p-2 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700">{error}</div>
+          )}
+          {loading.conversations && conversations.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              <RefreshCw className="w-4 h-4 animate-spin inline mr-1" /> Cargando conversaciones…
+            </div>
+          ) : null}
           <div className="relative">
             <Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar conversación..." className="pl-8 h-9 text-sm" />
           </div>
@@ -304,9 +367,38 @@ export function ConversationPanel() {
                 <DialogContent>
                   <DialogHeader><DialogTitle>Transferir Conversación</DialogTitle></DialogHeader>
                   <div className="space-y-4 pt-4">
-                    <div><label className="text-sm font-medium text-slate-700 mb-1 block">Equipo destino</label><Input value={transferTeamId} onChange={(e) => { setTransferTeamId(e.target.value); setTransferAgentId('') }} placeholder="Nombre del equipo" /></div>
-                    {transferTeamId && <div><label className="text-sm font-medium text-slate-700 mb-1 block">Agente (opcional)</label><Input value={transferAgentId} onChange={(e) => setTransferAgentId(e.target.value)} placeholder="Nombre del agente" /></div>}
-                    <Button onClick={handleTransfer} className="w-full bg-rose-600 hover:bg-rose-700" disabled={!transferTeamId}><UserPlus className="w-4 h-4 mr-2" /> Transferir</Button>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 mb-1 block">Equipo destino</label>
+                      <select
+                        value={transferTeamId}
+                        onChange={(e) => { setTransferTeamId(e.target.value); setTransferAgentId('') }}
+                        className="w-full px-3 py-2 rounded-md border border-slate-300 text-sm bg-white"
+                      >
+                        <option value="">Selecciona un equipo…</option>
+                        {teams.map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {transferTeamId && (
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-1 block">Agente (opcional)</label>
+                        <select
+                          value={transferAgentId}
+                          onChange={(e) => setTransferAgentId(e.target.value)}
+                          className="w-full px-3 py-2 rounded-md border border-slate-300 text-sm bg-white"
+                        >
+                          <option value="">Sin asignar</option>
+                          {teams.find(t => t.id === transferTeamId)?.members.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <Button onClick={handleTransfer} className="w-full bg-rose-600 hover:bg-rose-700" disabled={!transferTeamId || actionLoading}>
+                      {actionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
+                      Transferir
+                    </Button>
                   </div>
                 </DialogContent>
               </Dialog>

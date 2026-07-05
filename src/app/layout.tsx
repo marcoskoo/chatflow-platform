@@ -14,24 +14,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
+  title: "ChatFlow - Multi-channel Chatbot Platform",
+  description: "Plataforma de chatbots multi-canal con constructor visual de flujos, IA GLM integrada, y soporte para WhatsApp, Messenger, Instagram y Telegram.",
+  keywords: ["chatbot", "flow builder", "WhatsApp", "Messenger", "Instagram", "Telegram", "GLM", "IA", "Next.js"],
+  authors: [{ name: "ChatFlow" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.svg",
   },
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "ChatFlow - Multi-channel Chatbot Platform",
+    description: "Constructor visual de flujos con IA GLM y multi-canal",
+    siteName: "ChatFlow",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    title: "ChatFlow",
+    description: "Constructor visual de flujos con IA GLM y multi-canal",
   },
 };
 
@@ -41,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

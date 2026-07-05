@@ -11,6 +11,7 @@ import {
   Play, MessageSquare, ToggleRight, GitBranch, Send, UserPlus,
   MousePointerClick, Brain, Trash2, Settings, Save, ArrowLeft,
   GripVertical, Plus, X, Move, ChevronDown, PanelLeft, PanelRight, ZoomIn, ZoomOut,
+  Variable, Clock, Network, Shuffle, Globe, Star, Code,
 } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 
@@ -23,6 +24,15 @@ const nodeTypes: { type: FlowNode['type']; label: string; icon: React.ReactNode;
   { type: 'transfer', label: 'Transferir', icon: <UserPlus className="w-4 h-4" />, color: 'bg-rose-500', description: 'Transferir a operador/equipo' },
   { type: 'input', label: 'Entrada', icon: <MousePointerClick className="w-4 h-4" />, color: 'bg-teal-500', description: 'Esperar entrada del usuario' },
   { type: 'ai_response', label: 'Respuesta IA', icon: <Brain className="w-4 h-4" />, color: 'bg-violet-500', description: 'Respuesta generada por IA' },
+  // New advanced node types
+  { type: 'set_variable', label: 'Variable', icon: <Variable className="w-4 h-4" />, color: 'bg-indigo-500', description: 'Asignar valor a variable persistente del usuario' },
+  { type: 'http_request', label: 'HTTP', icon: <Network className="w-4 h-4" />, color: 'bg-orange-500', description: 'Llamar a una API externa y usar la respuesta' },
+  { type: 'delay', label: 'Espera', icon: <Clock className="w-4 h-4" />, color: 'bg-slate-500', description: 'Pausar el flujo por N milisegundos' },
+  { type: 'subflow', label: 'Sub-flujo', icon: <Code className="w-4 h-4" />, color: 'bg-fuchsia-500', description: 'Saltar a otro flujo reutilizable' },
+  { type: 'random', label: 'Aleatorio', icon: <Shuffle className="w-4 h-4" />, color: 'bg-pink-500', description: 'Ramificar aleatoriamente con pesos' },
+  { type: 'ab_assign', label: 'A/B Test', icon: <Star className="w-4 h-4" />, color: 'bg-yellow-500', description: 'Asignar usuario a variante A/B' },
+  { type: 'language_switch', label: 'Idioma', icon: <Globe className="w-4 h-4" />, color: 'bg-sky-500', description: 'Cambiar idioma de la conversación' },
+  { type: 'csat', label: 'Encuesta CSAT', icon: <Star className="w-4 h-4" />, color: 'bg-lime-500', description: 'Solicitar calificación de satisfacción' },
 ]
 
 export function FlowBuilder() {
@@ -47,6 +57,20 @@ export function FlowBuilder() {
   const [editTransferTeam, setEditTransferTeam] = useState('')
   const [editTransferMsg, setEditTransferMsg] = useState('')
   const [editAiPrompt, setEditAiPrompt] = useState('')
+  // New node-type edit state
+  const [editVariableName, setEditVariableName] = useState('')
+  const [editVariableValue, setEditVariableValue] = useState('')
+  const [editHttpUrl, setEditHttpUrl] = useState('')
+  const [editHttpMethod, setEditHttpMethod] = useState('GET')
+  const [editHttpBody, setEditHttpBody] = useState('')
+  const [editDelayMs, setEditDelayMs] = useState(1000)
+  const [editSubflowId, setEditSubflowId] = useState('')
+  const [editLanguage, setEditLanguage] = useState('es')
+  const [editCsatPrompt, setEditCsatPrompt] = useState('¿Cómo calificarías tu experiencia?')
+  const [editRandomBranches, setEditRandomBranches] = useState<{ id: string; label: string; weight: number }[]>([
+    { id: 'a', label: 'Rama A', weight: 50 },
+    { id: 'b', label: 'Rama B', weight: 50 },
+  ])
   const isMobile = useIsMobile()
   const [showMobilePalette, setShowMobilePalette] = useState(false)
   const [canvasScale, setCanvasScale] = useState(1)
@@ -55,6 +79,44 @@ export function FlowBuilder() {
 
   const bot = bots.find(b => b.id === selectedBotId)
   const flow = bot?.flows.find(f => f.id === selectedFlowId)
+
+  // Touch support for mobile (pinch-to-zoom + pan) - hooks must be called before any early return
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      lastTouchDist.current = Math.sqrt(dx * dx + dy * dy)
+      lastTouchCenter.current = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      }
+    } else if (e.touches.length === 1) {
+      setIsPanning(true)
+      setPanStart({ x: e.touches[0].clientX, y: e.touches[0].clientY })
+    }
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2 && lastTouchDist.current !== null) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const scaleDelta = dist / lastTouchDist.current
+      setCanvasScale(prev => Math.min(3, Math.max(0.3, prev * scaleDelta)))
+      lastTouchDist.current = dist
+    } else if (e.touches.length === 1 && isPanning) {
+      const dx = e.touches[0].clientX - panStart.x
+      const dy = e.touches[0].clientY - panStart.y
+      setCanvasOffset(prev => ({ x: prev.x + dx / canvasScale, y: prev.y + dy / canvasScale }))
+      setPanStart({ x: e.touches[0].clientX, y: e.touches[0].clientY })
+    }
+  }, [isPanning, panStart, canvasScale])
+
+  const handleTouchEnd = useCallback(() => {
+    lastTouchDist.current = null
+    lastTouchCenter.current = null
+    setIsPanning(false)
+  }, [])
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect()
@@ -188,6 +250,18 @@ export function FlowBuilder() {
       setEditTransferTeam(node.data.transferTeam || '')
       setEditTransferMsg(node.data.transferMessage || '')
       setEditAiPrompt(node.data.aiPrompt || '')
+      setEditVariableName(node.data.variableName || '')
+      setEditVariableValue(node.data.variableValue || '')
+      setEditHttpUrl(node.data.httpRequestUrl || '')
+      setEditHttpMethod(node.data.httpMethod || 'GET')
+      setEditHttpBody(node.data.httpBody || '')
+      setEditDelayMs(node.data.delayMs ?? 1000)
+      setEditSubflowId(node.data.subflowId || node.data.abTestFlowId || '')
+      setEditLanguage(node.data.language || 'es')
+      setEditCsatPrompt(node.data.csatPrompt || '¿Cómo calificarías tu experiencia?')
+      setEditRandomBranches(node.data.randomBranches && node.data.randomBranches.length > 0
+        ? node.data.randomBranches
+        : [{ id: 'a', label: 'Rama A', weight: 50 }, { id: 'b', label: 'Rama B', weight: 50 }])
       setShowNodeEditor(true)
     }
   }
@@ -200,46 +274,19 @@ export function FlowBuilder() {
       transferTeam: editTransferTeam,
       transferMessage: editTransferMsg,
       aiPrompt: editAiPrompt,
+      variableName: editVariableName,
+      variableValue: editVariableValue,
+      httpRequestUrl: editHttpUrl,
+      httpMethod: editHttpMethod,
+      httpBody: editHttpBody,
+      delayMs: editDelayMs,
+      subflowId: editSubflowId,
+      abTestFlowId: editSubflowId,
+      language: editLanguage,
+      csatPrompt: editCsatPrompt,
+      randomBranches: editRandomBranches,
     })
   }
-
-  // Touch support for mobile (pinch-to-zoom + pan)
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      lastTouchDist.current = Math.sqrt(dx * dx + dy * dy)
-      lastTouchCenter.current = {
-        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
-      }
-    } else if (e.touches.length === 1) {
-      setIsPanning(true)
-      setPanStart({ x: e.touches[0].clientX, y: e.touches[0].clientY })
-    }
-  }, [])
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 2 && lastTouchDist.current !== null) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      const dist = Math.sqrt(dx * dx + dy * dy)
-      const scaleDelta = dist / lastTouchDist.current
-      setCanvasScale(prev => Math.min(3, Math.max(0.3, prev * scaleDelta)))
-      lastTouchDist.current = dist
-    } else if (e.touches.length === 1 && isPanning) {
-      const dx = e.touches[0].clientX - panStart.x
-      const dy = e.touches[0].clientY - panStart.y
-      setCanvasOffset(prev => ({ x: prev.x + dx / canvasScale, y: prev.y + dy / canvasScale }))
-      setPanStart({ x: e.touches[0].clientX, y: e.touches[0].clientY })
-    }
-  }, [isPanning, panStart, canvasScale])
-
-  const handleTouchEnd = useCallback(() => {
-    lastTouchDist.current = null
-    lastTouchCenter.current = null
-    setIsPanning(false)
-  }, [])
 
   // Handle adding node on mobile from palette
   const handleMobileAddNode = (nodeType: FlowNode['type']) => {
@@ -803,6 +850,201 @@ export function FlowBuilder() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+            )}
+
+            {selectedNode.type === 'set_variable' && (
+              <div className="space-y-2">
+                <div>
+                  <label className="text-xs font-medium text-slate-700 mb-1 block">Nombre de variable</label>
+                  <Input
+                    className="text-sm h-8"
+                    placeholder="Ej: nombre_usuario"
+                    value={editVariableName}
+                    onChange={(e) => setEditVariableName(e.target.value)}
+                    onBlur={handleSaveNodeEdit}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700 mb-1 block">Valor</label>
+                  <Input
+                    className="text-sm h-8"
+                    placeholder="Ej: {{user.input}} o texto fijo"
+                    value={editVariableValue}
+                    onChange={(e) => setEditVariableValue(e.target.value)}
+                    onBlur={handleSaveNodeEdit}
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Puedes usar {`{{variables}}`} existentes como {`{{user.name}}`} o {`{{conversation.id}}`}.</p>
+                </div>
+              </div>
+            )}
+
+            {selectedNode.type === 'http_request' && (
+              <div className="space-y-2">
+                <div>
+                  <label className="text-xs font-medium text-slate-700 mb-1 block">URL</label>
+                  <Input
+                    className="text-sm h-8 font-mono"
+                    placeholder="https://api.ejemplo.com/v1/recurso"
+                    value={editHttpUrl}
+                    onChange={(e) => setEditHttpUrl(e.target.value)}
+                    onBlur={handleSaveNodeEdit}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700 mb-1 block">Método</label>
+                  <Select value={editHttpMethod} onValueChange={(v) => { setEditHttpMethod(v); setTimeout(handleSaveNodeEdit, 0) }}>
+                    <SelectTrigger className="text-sm h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GET">GET</SelectItem>
+                      <SelectItem value="POST">POST</SelectItem>
+                      <SelectItem value="PUT">PUT</SelectItem>
+                      <SelectItem value="PATCH">PATCH</SelectItem>
+                      <SelectItem value="DELETE">DELETE</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700 mb-1 block">Body (JSON)</label>
+                  <Textarea
+                    rows={3}
+                    className="text-sm font-mono"
+                    placeholder='{ "key": "value" }'
+                    value={editHttpBody}
+                    onChange={(e) => setEditHttpBody(e.target.value)}
+                    onBlur={handleSaveNodeEdit}
+                  />
+                </div>
+              </div>
+            )}
+
+            {selectedNode.type === 'delay' && (
+              <div>
+                <label className="text-xs font-medium text-slate-700 mb-1 block">Espera (ms)</label>
+                <Input
+                  type="number"
+                  className="text-sm h-8"
+                  value={editDelayMs}
+                  onChange={(e) => setEditDelayMs(parseInt(e.target.value) || 0)}
+                  onBlur={handleSaveNodeEdit}
+                />
+                <p className="text-[10px] text-slate-400 mt-1">1000 ms = 1 segundo. Para mensajes secuenciales en WhatsApp se recomienda 500-2000 ms.</p>
+              </div>
+            )}
+
+            {selectedNode.type === 'subflow' && (
+              <div>
+                <label className="text-xs font-medium text-slate-700 mb-1 block">Flujo destino</label>
+                <Select value={editSubflowId} onValueChange={(v) => { setEditSubflowId(v); setTimeout(handleSaveNodeEdit, 0) }}>
+                  <SelectTrigger className="text-sm h-8"><SelectValue placeholder="Seleccionar flujo" /></SelectTrigger>
+                  <SelectContent>
+                    {bot?.flows.filter(f => f.id !== selectedFlowId).map(f => (
+                      <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-slate-400 mt-1">El flujo actual se pausará y se ejecutará el sub-flujo. Al terminar, continuará por la rama "completado".</p>
+              </div>
+            )}
+
+            {selectedNode.type === 'random' && (
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-slate-700 mb-1 block">Ramas con pesos (%)</label>
+                {editRandomBranches.map((b, idx) => (
+                  <div key={b.id} className="flex items-center gap-2">
+                    <Input
+                      className="text-sm h-8 flex-1"
+                      value={b.label}
+                      onChange={(e) => {
+                        const next = [...editRandomBranches]
+                        next[idx] = { ...b, label: e.target.value }
+                        setEditRandomBranches(next)
+                      }}
+                      onBlur={handleSaveNodeEdit}
+                    />
+                    <Input
+                      type="number"
+                      className="text-sm h-8 w-20"
+                      value={b.weight}
+                      onChange={(e) => {
+                        const next = [...editRandomBranches]
+                        next[idx] = { ...b, weight: parseInt(e.target.value) || 0 }
+                        setEditRandomBranches(next)
+                      }}
+                      onBlur={handleSaveNodeEdit}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0"
+                      onClick={() => {
+                        setEditRandomBranches(editRandomBranches.filter(x => x.id !== b.id))
+                        setTimeout(handleSaveNodeEdit, 0)
+                      }}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    const id = String.fromCharCode(97 + editRandomBranches.length)
+                    setEditRandomBranches([...editRandomBranches, { id, label: `Rama ${id.toUpperCase()}`, weight: 25 }])
+                    setTimeout(handleSaveNodeEdit, 0)
+                  }}
+                >
+                  <Plus className="w-3 h-3 mr-1" /> Añadir rama
+                </Button>
+              </div>
+            )}
+
+            {selectedNode.type === 'ab_assign' && (
+              <div>
+                <label className="text-xs font-medium text-slate-700 mb-1 block">Asignación A/B</label>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Este nodo asigna al usuario a una variante A o B según el tráfico configurado en el test activo. Crea el test en <strong>A/B Testing</strong> en el panel.
+                </p>
+                <Select value={editSubflowId} onValueChange={(v) => { setEditSubflowId(v); setTimeout(handleSaveNodeEdit, 0) }}>
+                  <SelectTrigger className="text-sm h-8"><SelectValue placeholder="Seleccionar test A/B" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Automático (usar test activo del bot)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {selectedNode.type === 'language_switch' && (
+              <div>
+                <label className="text-xs font-medium text-slate-700 mb-1 block">Idioma destino</label>
+                <Select value={editLanguage} onValueChange={(v) => { setEditLanguage(v); setTimeout(handleSaveNodeEdit, 0) }}>
+                  <SelectTrigger className="text-sm h-8"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="es">Español</SelectItem>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="pt">Português</SelectItem>
+                    <SelectItem value="fr">Français</SelectItem>
+                    <SelectItem value="de">Deutsch</SelectItem>
+                    <SelectItem value="it">Italiano</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-slate-400 mt-1">Cambia el idioma de la conversación. Los nodos siguientes usarán las traducciones correspondientes.</p>
+              </div>
+            )}
+
+            {selectedNode.type === 'csat' && (
+              <div>
+                <label className="text-xs font-medium text-slate-700 mb-1 block">Mensaje de encuesta</label>
+                <Textarea
+                  rows={2}
+                  className="text-sm"
+                  value={editCsatPrompt}
+                  onChange={(e) => setEditCsatPrompt(e.target.value)}
+                  onBlur={handleSaveNodeEdit}
+                />
+                <p className="text-[10px] text-slate-400 mt-1">El usuario recibirá 5 botones (1-5 estrellas). La puntuación se guarda en <code>conversation.csatScore</code>.</p>
               </div>
             )}
           </div>
