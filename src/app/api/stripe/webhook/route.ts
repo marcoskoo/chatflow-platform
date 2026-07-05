@@ -155,10 +155,25 @@ async function handleSubscriptionUpdated(sub: any) {
   const periodStart = new Date(anchor * 1000)
   const periodEnd = new Date(anchor * 1000 + 30 * 24 * 60 * 60 * 1000)
 
-  // First try by subscription id
-  try {
+  // Use upsert so that if the subscription doesn't exist yet (e.g., when
+  // customer.subscription.created arrives before checkout.session.completed,
+  // or when a subscription is created directly via Stripe API / dashboard),
+  // we still create the local record instead of silently failing.
+  // We try by stripeSubscriptionId first via a findFirst + upsert pattern.
+  const existing = await db.subscription.findFirst({
+    where: {
+      OR: [
+        { stripeSubscriptionId: sub.id },
+        { stripeCustomerId: customerId },
+        { customerId },
+      ],
+    },
+  })
+
+  if (existing) {
+    // Update existing record by id (guaranteed unique)
     await db.subscription.update({
-      where: { stripeSubscriptionId: sub.id },
+      where: { id: existing.id },
       data: {
         status: sub.status,
         ...(plan ? {
@@ -167,35 +182,39 @@ async function handleSubscriptionUpdated(sub: any) {
           conversationsLimit: plan.conversationsLimit,
           messagesLimit: plan.messagesLimit,
         } : {}),
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId: customerId,
         stripePriceId: priceId || undefined,
         cancelAtPeriodEnd: sub.cancel_at_period_end,
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
       },
     })
-  } catch {
-    // subscription not found -> try via customer
-    try {
-      await db.subscription.update({
-        where: { customerId },
-        data: {
-          status: sub.status,
-          stripeSubscriptionId: sub.id,
-          ...(plan ? {
-            plan: plan.id,
-            seats: plan.seats,
-            conversationsLimit: plan.conversationsLimit,
-            messagesLimit: plan.messagesLimit,
-          } : {}),
-          stripePriceId: priceId || undefined,
-          cancelAtPeriodEnd: sub.cancel_at_period_end,
-          currentPeriodStart: periodStart,
-          currentPeriodEnd: periodEnd,
-        },
-      })
-    } catch (e) {
-      console.warn('Could not update subscription for customer', customerId, e)
-    }
+  } else {
+    // Create new record. customerId here is the Stripe customer id (cus_xxx).
+    // If the subscription was created via /api/stripe/checkout with a custom
+    // customerId in metadata, we prefer that one; otherwise we use the Stripe
+    // customer id as our internal customerId too.
+    const internalCustomerId =
+      sub.metadata?.customerId || customerId
+    await db.subscription.create({
+      data: {
+        customerId: internalCustomerId,
+        status: sub.status,
+        ...(plan ? {
+          plan: plan.id,
+          seats: plan.seats,
+          conversationsLimit: plan.conversationsLimit,
+          messagesLimit: plan.messagesLimit,
+        } : { plan: 'free' }),
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId: customerId,
+        stripePriceId: priceId || undefined,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+      },
+    })
   }
 }
 
