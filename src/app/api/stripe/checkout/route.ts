@@ -73,7 +73,6 @@ export async function POST(req: NextRequest) {
     },
     allow_promotion_codes: true,
     billing_address_collection: 'auto',
-    customer_creation: stripeCustomerId ? undefined : 'always',
   })
 
   return NextResponse.json({ url: session.url, sessionId: session.id })
