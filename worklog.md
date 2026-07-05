@@ -59,3 +59,57 @@ Stage Summary:
 - Schema migrated and seeded successfully
 - Admin API Key: cf_9a0c297729d68f1171a11267209814d665b0d41c231d65576c7aaac2d7a3f99a
 - App live at https://mkoo-chat.vercel.app with working database connection
+
+---
+Task ID: 1-6
+Agent: Main Agent
+Task: Configure real PostgreSQL database (Neon) and update DATABASE_URL in Vercel
+
+Work Log:
+- Found Vercel API endpoint for connecting Neon resource to project: POST /v1/storage/stores/{storeId}/connections
+- Confirmed Neon resource (store_3t8I9ejOW6eDadrZ) was already connected to mkoo-chat project
+- Discovered /v1/storage/stores/{storeId}/secrets endpoint that returns decrypted Neon credentials
+- Obtained real DATABASE_URL: postgresql://neondb_owner:npg_9IVpeTJLyRs8@ep-falling-darkness-ahc1ojte-pooler.c-3.us-east-1.aws.neon.tech/neondb
+- Obtained DIRECT_URL (unpooled): postgresql://neondb_owner:npg_9IVpeTJLyRs8@ep-falling-darkness-ahc1ojte.c-3.us-east-1.aws.neon.tech/neondb
+- Updated local .env with pgbouncer=true parameter for pooled connection
+- Deleted old empty sensitive env vars and recreated as encrypted with correct values in Vercel
+- Ran prisma db push --force-reset to create all tables in Neon
+- Seeded initial data: 1 team, 5 channels, 1 bot with flow, 4 webhook configs
+- Fixed API key storage: keys must be SHA-256 hashed before storage (auth.ts line 37)
+- Created proper admin API key with cf_ prefix and SHA-256 hashing
+- Fixed bot channels data format (was comma-separated string, changed to JSON array)
+- Deployed to Vercel production and verified all API endpoints work
+
+Stage Summary:
+- Neon PostgreSQL database fully configured and operational
+- All API endpoints tested and working: /api/channels, /api/teams, /api/bots
+- Admin API Key: cf_4e20bd86a582d7f8f74180cba4419d64b90e00fab1a2b8f4c9b1bfcf288598a3
+- Production URL: https://my-project-three-mocha-71.vercel.app
+- Neon Project: bold-frost-19977449 (iad1 region, free tier 0.5GB)
+
+---
+Task ID: 1-6
+Agent: Main Agent
+Task: Configure real PostgreSQL database (Neon) and update DATABASE_URL in Vercel
+
+Work Log:
+- Found Vercel API endpoint for connecting Neon resource to project: POST /v1/storage/stores/{storeId}/connections
+- Confirmed Neon resource (store_3t8I9ejOW6eDadrZ) was already connected to mkoo-chat project
+- Discovered /v1/storage/stores/{storeId}/secrets endpoint that returns decrypted Neon credentials
+- Obtained real DATABASE_URL: postgresql://neondb_owner:npg_9IVpeTJLyRs8@ep-falling-darkness-ahc1ojte-pooler.c-3.us-east-1.aws.neon.tech/neondb
+- Obtained DIRECT_URL (unpooled): postgresql://neondb_owner:npg_9IVpeTJLyRs8@ep-falling-darkness-ahc1ojte.c-3.us-east-1.aws.neon.tech/neondb
+- Updated local .env with pgbouncer=true parameter for pooled connection
+- Deleted old empty sensitive env vars and recreated as encrypted with correct values in Vercel
+- Ran prisma db push --force-reset to create all tables in Neon
+- Seeded initial data: 1 team, 5 channels, 1 bot with flow, 4 webhook configs
+- Fixed API key storage: keys must be SHA-256 hashed before storage (auth.ts line 37)
+- Created proper admin API key with cf_ prefix and SHA-256 hashing
+- Fixed bot channels data format (was comma-separated string, changed to JSON array)
+- Deployed to Vercel production and verified all API endpoints work
+
+Stage Summary:
+- Neon PostgreSQL database fully configured and operational
+- All API endpoints tested and working: /api/channels, /api/teams, /api/bots
+- Admin API Key: cf_4e20bd86a582d7f8f74180cba4419d64b90e00fab1a2b8f4c9b1bfcf288598a3
+- Production URL: https://my-project-three-mocha-71.vercel.app
+- Neon Project: bold-frost-19977449 (iad1 region, free tier 0.5GB)
