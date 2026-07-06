@@ -411,6 +411,14 @@ export const api = {
       method: 'POST', body: JSON.stringify(data),
     })),
 
+  // ─── Regional Settings ───────────────────────────────────────────────────
+  getRegionalSettings: () =>
+    unwrap(apiFetch<ApiEnvelope<unknown>>('/api/settings/regional')),
+  updateRegionalSettings: (data: Record<string, unknown>) =>
+    unwrap(apiFetch<ApiEnvelope<unknown>>('/api/settings/regional', {
+      method: 'PUT', body: JSON.stringify(data),
+    })),
+
   // ─── Billing ─────────────────────────────────────────────────────────────
   listSubscriptions: () =>
     unwrap(apiFetch<ApiEnvelope<unknown[]>>('/api/subscriptions')),

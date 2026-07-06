@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Zap, ChevronLeft, X, Code, Shield,
   Contact as ContactIcon, Megaphone, BarChart3, BookOpen, Plug,
   FlaskConical, Store, Lock, CreditCard, Phone, Building2, ScrollText, Star,
-  Wallet,
+  Wallet, Globe,
 } from 'lucide-react'
 import { useChatbotStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -15,7 +15,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 type View = 'dashboard' | 'bots' | 'builder' | 'conversations' | 'channels' | 'teams'
   | 'api' | 'security' | 'contacts' | 'broadcasts' | 'analytics' | 'knowledge'
   | 'integrations' | 'ab-testing' | 'marketplace' | 'gdpr' | 'billing'
-  | 'voice' | 'workspaces' | 'audit' | 'users' | 'subscriptions'
+  | 'voice' | 'workspaces' | 'audit' | 'users' | 'subscriptions' | 'regional'
 
 interface NavGroup {
   label: string
@@ -66,6 +66,7 @@ const navGroups: NavGroup[] = [
       { id: 'gdpr', label: 'GDPR', icon: Lock },
       { id: 'subscriptions', label: 'Suscripciones', icon: Wallet },
       { id: 'billing', label: 'Facturación', icon: CreditCard },
+      { id: 'regional', label: 'Config. Regional', icon: Globe },
       { id: 'workspaces', label: 'Workspaces', icon: Building2 },
       { id: 'api', label: 'API & IA', icon: Code },
     ],

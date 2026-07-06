@@ -14,7 +14,7 @@ import {
   RefreshCw, Plus, Trash2, Send, Download, Upload, Search,
   Megaphone, BarChart3, BookOpen, Plug, FlaskConical, Store,
   Lock, CreditCard, Phone, Building2, ScrollText, Users,
-  Star, ExternalLink, Loader2,
+  Star, ExternalLink, Loader2, Globe, Save, MapPin, Building, Receipt, Percent,
 } from 'lucide-react'
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
@@ -1721,6 +1721,360 @@ export function UsersPanel() {
             </Card>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Configuración Regional ────────────────────────────────────────────────
+
+interface RegionalSettingsData {
+  id: string
+  country: string
+  countryName: string
+  currencyCode: string
+  currencySymbol: string
+  currencyName: string
+  taxName: string
+  taxRate: number
+  locale: string
+  timezone: string
+  issuerRuc: string | null
+  issuerRazonSocial: string | null
+  issuerNombreComercial: string | null
+  issuerDireccion: string | null
+  issuerDepartamento: string | null
+  issuerProvincia: string | null
+  issuerDistrito: string | null
+  issuerUbigeo: string | null
+  issuerUrbanizacion: string | null
+  senderUrl: string | null
+  senderToken: string | null
+}
+
+export function RegionalPanel() {
+  const [settings, setSettings] = useState<RegionalSettingsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const data = await api.getRegionalSettings() as RegionalSettingsData
+      setSettings(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar configuración')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleSave = async () => {
+    if (!settings) return
+    setSaving(true); setError(null)
+    try {
+      const updated = await api.updateRegionalSettings(settings as unknown as Record<string, unknown>) as RegionalSettingsData
+      setSettings(updated)
+      setSavedAt(new Date())
+      setTimeout(() => setSavedAt(null), 3000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const update = (field: keyof RegionalSettingsData, value: string | number) => {
+    setSettings(prev => prev ? { ...prev, [field]: value } : prev)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      </div>
+    )
+  }
+
+  if (!settings) {
+    return (
+      <div className="p-6">
+        <p className="text-sm text-rose-600">No se pudo cargar la configuración regional.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <PageHeader
+        title="Configuración Regional"
+        subtitle="País, moneda, impuestos y datos del emisor SUNAT para facturación electrónica (CPE)"
+        action={
+          <div className="flex items-center gap-2">
+            {savedAt && (
+              <Badge variant="outline" className="text-emerald-600 border-emerald-300 bg-emerald-50">
+                ✓ Guardado
+              </Badge>
+            )}
+            <Button onClick={handleSave} disabled={saving} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Guardar cambios
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        {error && (
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">
+            {error}
+          </div>
+        )}
+
+        {/* ─── Regional ──────────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Globe className="w-5 h-5 text-blue-500" /> Regional
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">País</label>
+              <Input value={settings.countryName} onChange={(e) => update('countryName', e.target.value)} />
+              <p className="text-[10px] text-slate-400 mt-1">Código ISO: {settings.country}</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Idioma / Locale</label>
+              <Input value={settings.locale} onChange={(e) => update('locale', e.target.value)} placeholder="es-PE" />
+              <p className="text-[10px] text-slate-400 mt-1">Formato: es-PE, es-MX, en-US…</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Zona horaria</label>
+              <Input value={settings.timezone} onChange={(e) => update('timezone', e.target.value)} placeholder="America/Lima" />
+              <p className="text-[10px] text-slate-400 mt-1">IANA tz, ej: America/Lima</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ─── Moneda ────────────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Receipt className="w-5 h-5 text-emerald-500" /> Moneda
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Código ISO</label>
+              <Input value={settings.currencyCode} onChange={(e) => update('currencyCode', e.target.value.toUpperCase())} placeholder="PEN" />
+              <p className="text-[10px] text-slate-400 mt-1">ISO 4217: PEN, USD, EUR, MXN…</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Símbolo</label>
+              <Input value={settings.currencySymbol} onChange={(e) => update('currencySymbol', e.target.value)} placeholder="S/" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Nombre</label>
+              <Input value={settings.currencyName} onChange={(e) => update('currencyName', e.target.value)} placeholder="Sol peruano" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ─── Impuesto (IGV) ─────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Percent className="w-5 h-5 text-amber-500" /> Impuesto
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Nombre del impuesto</label>
+              <Input value={settings.taxName} onChange={(e) => update('taxName', e.target.value)} placeholder="IGV" />
+              <p className="text-[10px] text-slate-400 mt-1">Perú: IGV (Impuesto General a las Ventas)</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Tasa (0–1)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={settings.taxRate}
+                onChange={(e) => update('taxRate', parseFloat(e.target.value) || 0)}
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                0.18 = 18%. Aplicado a facturas SUNAT.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ─── Emisor SUNAT ───────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Building className="w-5 h-5 text-violet-500" /> Datos del Emisor (SUNAT)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-slate-500">
+              Estos datos aparecen en las facturas electrónicas (CPE) generadas por la plataforma.
+              El RUC y razón social deben coincidir exactamente con tu inscripción en SUNAT.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">RUC</label>
+                <Input
+                  value={settings.issuerRuc ?? ''}
+                  onChange={(e) => update('issuerRuc', e.target.value)}
+                  placeholder="20123456789"
+                  maxLength={11}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Razón Social</label>
+                <Input
+                  value={settings.issuerRazonSocial ?? ''}
+                  onChange={(e) => update('issuerRazonSocial', e.target.value)}
+                  placeholder="MI EMPRESA SAC"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Nombre Comercial (opcional)</label>
+                <Input
+                  value={settings.issuerNombreComercial ?? ''}
+                  onChange={(e) => update('issuerNombreComercial', e.target.value)}
+                  placeholder="Mi Empresa"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Ubigeo (INEI, 6 dígitos)</label>
+                <Input
+                  value={settings.issuerUbigeo ?? ''}
+                  onChange={(e) => update('issuerUbigeo', e.target.value)}
+                  placeholder="150101"
+                  maxLength={6}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Dirección fiscal</label>
+              <Input
+                value={settings.issuerDireccion ?? ''}
+                onChange={(e) => update('issuerDireccion', e.target.value)}
+                placeholder="Av. Javier Prado Este 1234"
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Departamento</label>
+                <Input
+                  value={settings.issuerDepartamento ?? ''}
+                  onChange={(e) => update('issuerDepartamento', e.target.value)}
+                  placeholder="LIMA"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Provincia</label>
+                <Input
+                  value={settings.issuerProvincia ?? ''}
+                  onChange={(e) => update('issuerProvincia', e.target.value)}
+                  placeholder="LIMA"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Distrito</label>
+                <Input
+                  value={settings.issuerDistrito ?? ''}
+                  onChange={(e) => update('issuerDistrito', e.target.value)}
+                  placeholder="SAN ISIDRO"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Urbanización (opcional)</label>
+              <Input
+                value={settings.issuerUrbanizacion ?? ''}
+                onChange={(e) => update('issuerUrbanizacion', e.target.value)}
+                placeholder="-"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ─── SUNAT Sender (OSE) ─────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <MapPin className="w-5 h-5 text-rose-500" /> Envío a SUNAT (OSE)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-slate-500">
+              URL del servicio de SUNAT u OSE para enviar las facturas electrónicas firmadas.
+              El token se encripta en la base de datos y no se muestra por seguridad.
+            </p>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">URL del servicio (SOAP)</label>
+              <Input
+                value={settings.senderUrl ?? ''}
+                onChange={(e) => update('senderUrl', e.target.value)}
+                placeholder="https://e-beta.sunat.gob.pe/ol-ti-itcpfegem/billService"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-1 block">Token / Client Secret</label>
+              <Input
+                type="password"
+                value={settings.senderToken ?? ''}
+                onChange={(e) => update('senderToken', e.target.value)}
+                placeholder={settings.senderToken ? '(configurado — escribe nuevo valor para reemplazar)' : 'Pega tu token SUNAT aquí'}
+              />
+              {settings.senderToken && (
+                <p className="text-[10px] text-emerald-600 mt-1">✓ Token ya configurado (no se muestra por seguridad)</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ─── Resumen visual ─────────────────────────────────────────────── */}
+        <Card className="bg-gradient-to-br from-emerald-50 to-blue-50 border-emerald-200">
+          <CardHeader>
+            <CardTitle className="text-base">Vista previa</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between border-b border-emerald-100 pb-2">
+                <span className="text-slate-600">País:</span>
+                <span className="font-semibold">{settings.countryName} ({settings.country})</span>
+              </div>
+              <div className="flex justify-between border-b border-emerald-100 pb-2">
+                <span className="text-slate-600">Moneda:</span>
+                <span className="font-semibold">{settings.currencySymbol} {settings.currencyCode} · {settings.currencyName}</span>
+              </div>
+              <div className="flex justify-between border-b border-emerald-100 pb-2">
+                <span className="text-slate-600">Impuesto:</span>
+                <span className="font-semibold">{settings.taxName} {(settings.taxRate * 100).toFixed(0)}%</span>
+              </div>
+              <div className="flex justify-between border-b border-emerald-100 pb-2">
+                <span className="text-slate-600">Locale:</span>
+                <span className="font-semibold">{settings.locale} · {settings.timezone}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600">Emisor:</span>
+                <span className="font-semibold">
+                  {settings.issuerRuc ? `${settings.issuerRuc} · ${settings.issuerRazonSocial ?? '—'}` : 'No configurado'}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

@@ -16,6 +16,7 @@ import {
   ContactsPanel, BroadcastsPanel, AnalyticsPanel, KnowledgePanel,
   IntegrationsPanel, ABTestingPanel, MarketplacePanel, GDPRPanel,
   BillingPanel, VoicePanel, WorkspacesPanel, AuditPanel, UsersPanel,
+  RegionalPanel,
 } from '@/components/chatbot/FeaturePanels'
 import { SubscriptionPanel } from '@/components/chatbot/SubscriptionPanel'
 import { Menu, Zap } from 'lucide-react'
@@ -75,6 +76,8 @@ function AppShell() {
         return <GDPRPanel />
       case 'billing':
         return <BillingPanel />
+      case 'regional':
+        return <RegionalPanel />
       case 'subscriptions':
         return <SubscriptionPanel />
       case 'voice':

@@ -549,6 +549,43 @@ model Workspace {
   updatedAt   DateTime @updatedAt
 }
 
+// ─── Regional Settings (singleton: id = "default") ─────────────────────────
+// Editable from the "Configuración Regional" admin panel.
+// Stores country, currency, tax (IGV), locale and SUNAT issuer info used by
+// /api/sunat/* to generate compliant Peruvian electronic invoices (CPE).
+
+model RegionalSettings {
+  id                  String   @id // always "default"
+  // Regional
+  country             String   @default("PE")        // ISO 3166-1 alpha-2
+  countryName         String   @default("Perú")
+  currencyCode        String   @default("PEN")       // ISO 4217
+  currencySymbol      String   @default("S/")
+  currencyName        String   @default("Sol peruano")
+  taxName             String   @default("IGV")        // SUNAT Impuesto General a las Ventas
+  taxRate             Decimal  @default(0.18)         // 18%
+  locale              String   @default("es-PE")
+  timezone            String   @default("America/Lima")
+
+  // SUNAT issuer (emisor)
+  issuerRuc           String?
+  issuerRazonSocial   String?
+  issuerNombreComercial String?
+  issuerDireccion     String?
+  issuerDepartamento  String?
+  issuerProvincia     String?
+  issuerDistrito      String?
+  issuerUbigeo        String?
+  issuerUrbanizacion  String?
+
+  // SUNAT sender (OSE/Sunat endpoint)
+  senderUrl           String?  // e.g. https://e-beta.sunat.gob.pe/ol-ti-itcpfegem/billService
+  senderToken         String?  // masked in API responses
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
 // ─── Subscription Management: editable plans + payment methods ───────────────
 
 /// Plans overridable from the admin panel. Seeded from PLANS on first run.

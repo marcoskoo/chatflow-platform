@@ -128,7 +128,7 @@ export interface Channel {
 type View = 'dashboard' | 'bots' | 'builder' | 'conversations' | 'channels' | 'teams' | 'api' | 'security'
   | 'contacts' | 'broadcasts' | 'analytics' | 'knowledge' | 'integrations'
   | 'ab-testing' | 'marketplace' | 'gdpr' | 'billing' | 'voice' | 'workspaces'
-  | 'audit' | 'users' | 'subscriptions'
+  | 'audit' | 'users' | 'subscriptions' | 'regional'
 
 interface ChatbotStore {
   // Auth

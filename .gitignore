@@ -72,3 +72,10 @@ Caddyfile
 
 # Research files
 research_*.json
+
+# Scripts with secrets — never commit
+scripts/test-checkout.ts
+scripts/debug-webhook.ts
+scripts/create-admin-key.ts
+scripts/send-test-event.ts
+scripts/setup-stripe.ts
