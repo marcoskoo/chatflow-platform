@@ -85,6 +85,19 @@ function unwrap<T>(p: Promise<ApiEnvelope<T>>): Promise<T> {
   })
 }
 
+// ─── Auth (email/password + session cookie) ─────────────────────────────────
+
+export interface AuthUser {
+  id: string
+  email: string
+  name: string
+  roleId: string | null
+  roleName?: string | null
+  permissions?: string[]
+  lastLoginAt?: string | null
+  isFirstUser?: boolean
+}
+
 // ─── Setup / Bootstrap ──────────────────────────────────────────────────────
 
 export interface SetupResult {
@@ -107,6 +120,32 @@ export const api = {
 
   /** Health check */
   health: () => apiFetch<unknown>('/api/healthz', { noAuth: true }),
+
+  // ─── Auth (email/password + session cookie) ──────────────────────────────
+  authLogin: (data: { email: string; password: string }) =>
+    unwrap(apiFetch<ApiEnvelope<AuthUser>>('/api/auth/login', {
+      method: 'POST',
+      noAuth: true,
+      body: JSON.stringify(data),
+    })),
+  authRegister: (data: { email: string; password: string; name: string }) =>
+    unwrap(apiFetch<ApiEnvelope<AuthUser & { isFirstUser: boolean }>>('/api/auth/register', {
+      method: 'POST',
+      noAuth: true,
+      body: JSON.stringify(data),
+    })),
+  authMe: () =>
+    unwrap(apiFetch<ApiEnvelope<AuthUser>>('/api/auth/me')),
+  authLogout: () =>
+    unwrap(apiFetch<ApiEnvelope<unknown>>('/api/auth/logout', { method: 'POST' })),
+  authSeedStatus: () =>
+    unwrap(apiFetch<ApiEnvelope<{ hasUsers: boolean; userCount: number }>>('/api/auth/seed', { noAuth: true })),
+  authSeed: (data?: { email?: string; password?: string; name?: string }) =>
+    unwrap(apiFetch<ApiEnvelope<{ created: boolean; data?: AuthUser & { password: string }; message?: string }>>('/api/auth/seed', {
+      method: 'POST',
+      noAuth: true,
+      body: JSON.stringify(data ?? {}),
+    })),
 
   // ─── Bots ────────────────────────────────────────────────────────────────
   listBots: () =>

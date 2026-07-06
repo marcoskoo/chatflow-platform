@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Zap, ChevronLeft, X, Code, Shield,
   Contact as ContactIcon, Megaphone, BarChart3, BookOpen, Plug,
   FlaskConical, Store, Lock, CreditCard, Phone, Building2, ScrollText, Star,
-  Wallet, Globe,
+  Wallet, Globe, LogOut, UserCircle,
 } from 'lucide-react'
 import { useChatbotStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -74,7 +74,7 @@ const navGroups: NavGroup[] = [
 ]
 
 export function Sidebar() {
-  const { currentView, setCurrentView, conversations, sidebarOpen, setSidebarOpen } = useChatbotStore()
+  const { currentView, setCurrentView, conversations, sidebarOpen, setSidebarOpen, currentUser, logout } = useChatbotStore()
   const isMobile = useIsMobile()
   const unreadCount = conversations.reduce((acc, c) => acc + c.unread, 0)
 
@@ -185,7 +185,38 @@ export function Sidebar() {
         {navGroups.map((g) => renderNavGroup(g, collapsed))}
       </nav>
 
-      <div className="px-2 pb-4">
+      <div className="px-2 pb-4 space-y-1">
+        {/* User info + logout (only shown if logged in via session cookie) */}
+        {currentUser && (
+          <div className={`mb-2 ${collapsed ? '' : 'p-2 rounded-lg bg-slate-800/60 border border-slate-700'}`}>
+            {!collapsed ? (
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                  {currentUser.name?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-white truncate">{currentUser.name}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{currentUser.email}</p>
+                </div>
+                <button
+                  onClick={() => { if (confirm('¿Cerrar sesión?')) logout() }}
+                  className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { if (confirm('¿Cerrar sesión?')) logout() }}
+                className="w-full flex items-center justify-center p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                title="Cerrar sesión"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all"

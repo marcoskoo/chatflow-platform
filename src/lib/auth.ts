@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from './db'
 import crypto from 'crypto'
+import { verifySession, getSessionCookieName, type SessionPayload } from './session'
 
 // ─── API Key Authentication ───────────────────────────────────────────────────
 
@@ -10,6 +11,60 @@ export interface ApiKeyData {
   key: string
   permissions: string[]
   isActive: boolean
+}
+
+// ─── Session (logged-in user) Authentication ─────────────────────────────────
+
+export interface UserData {
+  id: string
+  email: string
+  name: string
+  roleId: string | null
+  permissions: string[]   // derived from Role, default ['admin'] if no role
+  isActive: boolean
+}
+
+/**
+ * Validate session cookie (JWT). Returns UserData if valid, or null.
+ * Looks for cookie named `chatflow_session`.
+ */
+export async function validateSession(request: NextRequest): Promise<UserData | null> {
+  const cookieName = getSessionCookieName()
+  const cookie = request.cookies.get(cookieName)?.value
+  const payload = verifySession(cookie)
+  if (!payload) return null
+
+  // Look up the user to make sure they still exist and are active
+  const user = await db.user.findUnique({
+    where: { id: payload.sub },
+    include: { role: true },
+  })
+  if (!user || !user.isActive) return null
+
+  // Derive permissions from role (or default to admin for backward compat)
+  let permissions: string[]
+  if (user.role) {
+    try { permissions = JSON.parse(user.role.permissions) } catch { permissions = ['read'] }
+  } else {
+    // No role assigned → treat as admin (matches existing single-admin behavior)
+    permissions = ['admin', 'read', 'write', 'webhooks']
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    roleId: user.roleId,
+    permissions,
+    isActive: user.isActive,
+  }
+}
+
+/**
+ * Build a session payload for a user (used by /api/auth/login and /api/auth/register).
+ */
+export function buildSessionPayload(user: { id: string; email: string; name: string }) {
+  return { sub: user.id, email: user.email, name: user.name }
 }
 
 /**
@@ -65,16 +120,40 @@ export function hasPermission(apiKey: ApiKeyData, permission: string): boolean {
 }
 
 /**
- * Middleware wrapper that requires API key authentication.
+ * Middleware wrapper that requires authentication.
+ * Accepts EITHER:
+ *   - API key via `Authorization: Bearer <key>` or `x-api-key: <key>` header, OR
+ *   - Session cookie `chatflow_session` (JWT, set by /api/auth/login)
  * Usage in route handlers:
  *   export async function GET(request: NextRequest) {
  *     const auth = await requireAuth(request)
  *     if (!auth.success) return auth.response
- *     const apiKey = auth.apiKey!
+ *     const apiKey = auth.apiKey    // present if authed via API key
+ *     const user = auth.user        // present if authed via session cookie
  *     // ... proceed with handler
  *   }
  */
 export async function requireAuth(request: NextRequest, requiredPermission: string = 'read') {
+  // Try session cookie first (logged-in user)
+  const user = await validateSession(request)
+  if (user) {
+    if (!user.permissions.includes('admin') && !user.permissions.includes(requiredPermission)) {
+      return {
+        success: false as const,
+        response: NextResponse.json(
+          {
+            success: false,
+            error: 'Insufficient permissions',
+            message: `This endpoint requires '${requiredPermission}' permission`,
+          },
+          { status: 403 }
+        ),
+      }
+    }
+    return { success: true as const, apiKey: null, user }
+  }
+
+  // Fall back to API key
   const apiKey = await validateApiKey(request)
 
   if (!apiKey) {
@@ -84,7 +163,7 @@ export async function requireAuth(request: NextRequest, requiredPermission: stri
         {
           success: false,
           error: 'Authentication required',
-          message: 'Include an API key via Authorization: Bearer <key> or x-api-key header',
+          message: 'Log in via /api/auth/login (sets a session cookie) or include an API key via Authorization: Bearer <key> or x-api-key header',
         },
         { status: 401 }
       ),
@@ -105,7 +184,29 @@ export async function requireAuth(request: NextRequest, requiredPermission: stri
     }
   }
 
-  return { success: true as const, apiKey }
+  return { success: true as const, apiKey, user: null }
+}
+
+/**
+ * Require a logged-in user (session cookie). Does NOT accept API keys.
+ * Use this for endpoints that need a real User row (e.g. user profile, billing).
+ */
+export type RequireUserResult =
+  | { success: true; user: UserData }
+  | { success: false; response: NextResponse }
+
+export async function requireUser(request: NextRequest): Promise<RequireUserResult> {
+  const user = await validateSession(request)
+  if (!user) {
+    return {
+      success: false,
+      response: NextResponse.json(
+        { success: false, error: 'Authentication required', message: 'Log in via /api/auth/login' },
+        { status: 401 }
+      ),
+    }
+  }
+  return { success: true, user }
 }
 
 // ─── API Key Generation ───────────────────────────────────────────────────────

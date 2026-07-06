@@ -135,6 +135,12 @@ interface ChatbotStore {
   apiKey: string | null
   apiKeyReady: boolean
   setApiKeyAndPersist: (key: string | null) => void
+  // Logged-in user (email/password session)
+  currentUser: { id: string; email: string; name: string; roleId: string | null; permissions?: string[] } | null
+  setCurrentUser: (u: ChatbotStore['currentUser']) => void
+  authMode: 'apikey' | 'session' | null    // which auth method is active
+  setAuthMode: (m: 'apikey' | 'session' | null) => void
+  logout: () => Promise<void>
 
   // Loading flags
   loading: {
@@ -292,6 +298,35 @@ export const useChatbotStore = create<ChatbotStore>((set, get) => ({
   setApiKeyAndPersist: (key) => {
     setApiKey(key)
     set({ apiKey: key, apiKeyReady: !!key })
+  },
+  currentUser: null,
+  setCurrentUser: (u) => set({ currentUser: u }),
+  authMode: null,
+  setAuthMode: (m) => set({ authMode: m }),
+  logout: async () => {
+    try {
+      // If logged in via session cookie, call logout endpoint to clear it
+      if (get().authMode === 'session') {
+        await api.authLogout()
+      }
+    } catch { /* ignore — clearing client state anyway */ }
+    // Clear client state
+    set({
+      currentUser: null,
+      authMode: null,
+      apiKey: null,
+      apiKeyReady: false,
+      bots: [],
+      conversations: [],
+      channels: [],
+      teams: [],
+      selectedBotId: null,
+      selectedFlowId: null,
+      selectedConversationId: null,
+      currentView: 'dashboard',
+    })
+    // Also remove any persisted API key from localStorage
+    setApiKey(null)
   },
 
   // Loading
