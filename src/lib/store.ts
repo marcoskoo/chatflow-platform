@@ -164,6 +164,9 @@ interface ChatbotStore {
 
   // Flows
   selectedFlowId: string | null
+  flowDirty: Record<string, boolean>        // flowId -> has unsaved changes
+  flowSaving: Record<string, boolean>       // flowId -> save in progress
+  flowLastSavedAt: Record<string, number>   // flowId -> epoch ms of last successful save
   selectFlow: (id: string) => void
   addFlow: (botId: string, flow: Flow) => void
   updateFlowNodes: (flowId: string, nodes: FlowNode[]) => void
@@ -171,6 +174,8 @@ interface ChatbotStore {
   addFlowNode: (flowId: string, node: FlowNode) => void
   updateFlowNode: (flowId: string, nodeId: string, data: Partial<FlowNode['data']>) => void
   deleteFlowNode: (flowId: string, nodeId: string) => void
+  markFlowDirty: (flowId: string) => void
+  saveFlow: (flowId: string) => Promise<{ ok: boolean; error?: string }>
 
   // Conversations
   conversations: Conversation[]
@@ -334,6 +339,9 @@ export const useChatbotStore = create<ChatbotStore>((set, get) => ({
 
   // Flows
   selectedFlowId: null,
+  flowDirty: {},
+  flowSaving: {},
+  flowLastSavedAt: {},
   selectFlow: (id) => set({ selectedFlowId: id }),
   addFlow: (botId, flow) => set((s) => ({
     bots: s.bots.map((b) => b.id === botId ? { ...b, flows: [...b.flows, flow] } : b),
@@ -343,18 +351,21 @@ export const useChatbotStore = create<ChatbotStore>((set, get) => ({
       ...b,
       flows: b.flows.map((f) => f.id === flowId ? { ...f, nodes } : f),
     })),
+    flowDirty: { ...s.flowDirty, [flowId]: true },
   })),
   updateFlowEdges: (flowId, edges) => set((s) => ({
     bots: s.bots.map((b) => ({
       ...b,
       flows: b.flows.map((f) => f.id === flowId ? { ...f, edges } : f),
     })),
+    flowDirty: { ...s.flowDirty, [flowId]: true },
   })),
   addFlowNode: (flowId, node) => set((s) => ({
     bots: s.bots.map((b) => ({
       ...b,
       flows: b.flows.map((f) => f.id === flowId ? { ...f, nodes: [...f.nodes, node] } : f),
     })),
+    flowDirty: { ...s.flowDirty, [flowId]: true },
   })),
   updateFlowNode: (flowId, nodeId, data) => set((s) => ({
     bots: s.bots.map((b) => ({
@@ -364,6 +375,7 @@ export const useChatbotStore = create<ChatbotStore>((set, get) => ({
         nodes: f.nodes.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n),
       } : f),
     })),
+    flowDirty: { ...s.flowDirty, [flowId]: true },
   })),
   deleteFlowNode: (flowId, nodeId) => set((s) => ({
     bots: s.bots.map((b) => ({
@@ -374,7 +386,39 @@ export const useChatbotStore = create<ChatbotStore>((set, get) => ({
         edges: f.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
       } : f),
     })),
+    flowDirty: { ...s.flowDirty, [flowId]: true },
   })),
+  markFlowDirty: (flowId) => set((s) => ({ flowDirty: { ...s.flowDirty, [flowId]: true } })),
+  saveFlow: async (flowId) => {
+    const state = get()
+    if (state.flowSaving[flowId]) return { ok: false, error: 'save in progress' }
+    // Find the flow in any bot
+    let flow: Flow | undefined
+    for (const b of state.bots) {
+      const f = b.flows.find((x) => x.id === flowId)
+      if (f) { flow = f; break }
+    }
+    if (!flow) return { ok: false, error: 'flow not found' }
+    set((s) => ({ flowSaving: { ...s.flowSaving, [flowId]: true } }))
+    try {
+      await api.saveFlow(flowId, {
+        name: flow.name,
+        nodes: flow.nodes,
+        edges: flow.edges,
+        trigger: flow.trigger,
+        isActive: flow.isActive,
+      })
+      set((s) => ({
+        flowSaving: { ...s.flowSaving, [flowId]: false },
+        flowDirty: { ...s.flowDirty, [flowId]: false },
+        flowLastSavedAt: { ...s.flowLastSavedAt, [flowId]: Date.now() },
+      }))
+      return { ok: true }
+    } catch (e) {
+      set((s) => ({ flowSaving: { ...s.flowSaving, [flowId]: false } }))
+      return { ok: false, error: e instanceof Error ? e.message : 'save failed' }
+    }
+  },
 
   // Conversations
   conversations: [],

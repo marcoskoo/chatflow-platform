@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useChatbotStore, type FlowNode, type FlowEdge } from '@/lib/store'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -39,6 +39,7 @@ export function FlowBuilder() {
   const {
     bots, selectedBotId, selectedFlowId, updateFlowNodes, updateFlowEdges,
     addFlowNode, updateFlowNode, deleteFlowNode, setCurrentView, teams,
+    flowDirty, flowSaving, flowLastSavedAt, saveFlow,
   } = useChatbotStore()
 
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -79,6 +80,36 @@ export function FlowBuilder() {
 
   const bot = bots.find(b => b.id === selectedBotId)
   const flow = bot?.flows.find(f => f.id === selectedFlowId)
+
+  // ─── Auto-save: when flowDirty[flowId] flips to true, debounce 1.5s and save ──
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  useEffect(() => {
+    if (!flow?.id) return
+    if (!flowDirty[flow.id]) return
+    setSaveStatus('saving')
+    const timer = setTimeout(async () => {
+      const result = await saveFlow(flow.id)
+      if (result.ok) {
+        setSaveStatus('saved')
+        setTimeout(() => setSaveStatus('idle'), 2000)
+      } else {
+        setSaveStatus('error')
+      }
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [flow?.id, flowDirty[flow?.id ?? ''], saveFlow])
+
+  // Warn before leaving the page if there are unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (flow?.id && flowDirty[flow.id]) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [flow?.id, flowDirty[flow?.id ?? '']])
 
   // Touch support for mobile (pinch-to-zoom + pan) - hooks must be called before any early return
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -560,6 +591,26 @@ export function FlowBuilder() {
               </Badge>
             </div>
             <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant={flow?.id && flowDirty[flow.id] ? 'default' : 'ghost'}
+                className={`h-8 w-8 p-0 ${flow?.id && flowDirty[flow.id] ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                disabled={!flow?.id || !!flowSaving[flow?.id ?? '']}
+                onClick={async () => {
+                  if (!flow?.id) return
+                  setSaveStatus('saving')
+                  const r = await saveFlow(flow.id)
+                  if (r.ok) {
+                    setSaveStatus('saved')
+                    setTimeout(() => setSaveStatus('idle'), 2000)
+                  } else {
+                    setSaveStatus('error')
+                  }
+                }}
+                title="Guardar"
+              >
+                <Save className="w-4 h-4" />
+              </Button>
               <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setCanvasScale(s => Math.min(3, s + 0.2))} title="Zoom in">
                 <ZoomIn className="w-4 h-4" />
               </Button>
@@ -593,9 +644,44 @@ export function FlowBuilder() {
                 <GitBranch className="w-3 h-3 mr-1" />
                 {flow.edges.length} conexiones
               </Badge>
+              {/* Save status indicator */}
+              {flow.id && (
+                <span className="text-[11px] flex items-center gap-1 ml-2">
+                  {saveStatus === 'saving' && <span className="text-amber-600 flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />Guardando…</span>}
+                  {saveStatus === 'saved' && <span className="text-emerald-600 flex items-center gap-1"><Save className="w-3 h-3" />Guardado ✓</span>}
+                  {saveStatus === 'error' && <span className="text-red-600">Error al guardar</span>}
+                  {saveStatus === 'idle' && flowLastSavedAt[flow.id] && !flowDirty[flow.id] && (
+                    <span className="text-slate-400">Todo guardado</span>
+                  )}
+                  {saveStatus === 'idle' && flowDirty[flow.id] && (
+                    <span className="text-amber-600">Cambios sin guardar</span>
+                  )}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-400">Clic en ● para conectar nodos | Doble-clic para editar</span>
+              <Button
+                size="sm"
+                variant={flow.id && flowDirty[flow.id] ? 'default' : 'outline'}
+                className={`gap-1 ${flow.id && flowDirty[flow.id] ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                disabled={!flow.id || !!flowSaving[flow.id ?? '']}
+                onClick={async () => {
+                  if (!flow.id) return
+                  setSaveStatus('saving')
+                  const r = await saveFlow(flow.id)
+                  if (r.ok) {
+                    setSaveStatus('saved')
+                    setTimeout(() => setSaveStatus('idle'), 2000)
+                  } else {
+                    setSaveStatus('error')
+                  }
+                }}
+                title="Guardar cambios del flujo (también se guarda automáticamente)"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {flowSaving[flow.id ?? ''] ? 'Guardando…' : 'Guardar'}
+              </Button>
               <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setCanvasScale(s => Math.min(3, s + 0.2))} title="Zoom in">
                 <ZoomIn className="w-4 h-4" />
               </Button>

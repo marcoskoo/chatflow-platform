@@ -132,6 +132,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     })),
+  getFlow: (flowId: string) =>
+    unwrap(apiFetch<ApiEnvelope<unknown>>(`/api/flows/${flowId}`)),
+  saveFlow: (flowId: string, data: {
+    name?: string
+    nodes?: unknown[]
+    edges?: unknown[]
+    trigger?: unknown
+    isActive?: boolean
+  }) =>
+    unwrap(apiFetch<ApiEnvelope<unknown>>(`/api/flows/${flowId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })),
 
   // ─── Conversations ───────────────────────────────────────────────────────
   listConversations: (params: { channel?: string; status?: string; botId?: string } = {}) => {
